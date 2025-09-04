@@ -52,7 +52,16 @@ In the `exact` scheme on Algorand, the `paymentRequirements` record **MAY** incl
 
 Additionally the `paymentRequirements.asset` field **MUST** be a string representing an ASA ID (64-bit unsigned integer) instead of an `ERC20` contract address. This **MUST** be validated by the resource server to ensure the `asset` field is valid when using the Algorand scheme.
 
-Example:
+### `paymentRequirements.extra` specification:
+
+```json5
+  {
+    // Optional Algorand address that will pay the transaction fees.
+    feePayer?: string;
+  }
+```
+
+Full `paymentRequirements` Example:
 
 ```json
 {
