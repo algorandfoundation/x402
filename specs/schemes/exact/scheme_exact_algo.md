@@ -108,7 +108,7 @@ Example of a USDC asset transfer with an abstracted fee (i.e paid by the facilit
 }
 ```
 
-## Full `X-PAYMENT` header:
+### Full `X-PAYMENT` header example:
 
 ```json
 {
@@ -122,6 +122,23 @@ Example of a USDC asset transfer with an abstracted fee (i.e paid by the facilit
       "gqNzaWfEQP3J1DI6GLSfK0nLZftvSyVMJuFOE48xPlnZpNdEJWbGbcxsD5aASwza4TjbwhgEF0dXOv8E3W/f22vkEzfFywWjdHhuiaRhYW10zgBMS0CkYXJjdsQgiSTqRESRI1JEAxxJKQAAAAAAAAAAAAAAAAAAAAAAAACiZnbOAy4Da6JnaMQgwGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit+jZ3JwxCB/LVLOv6WC+BMmy+IxjYqcdKxerJ8InVQ4IT7ZN/e9L6Jsds4DLgdTo3NuZMQgEtBGzAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACkdHlwZaVheGZlcqR4YWlkzgHhq3A="
     ]
   }
+}
+```
+
+## `X-Payment-Response` Header
+
+Upon a successful settlement, the `X-PAYMENT-RESPONSE` **MUST** return the transaction ID of the `paymentGroup[paymentIndex]` transaction. This identifies the specific asset transfer transaction to the `payTo` address for the `maxAmountRequired`, and can be used to identify the transaction on the network.
+
+Should the settlement fail, the transaction ID **SHOULD** be returned, but since failed transactions are not committed to the network, it might not be visible on the chain.
+
+### Full `X-PAYMENT-RESPONSE` header example:
+
+```json
+{
+  "success": true,
+  "error": null,
+  "txHash": "NTRZR6HGMMZGYMJKUNVNLKLA427ACAVIPFNC6JHA5XNBQQHW7MWA",
+  "networkId": "algorand-mainnet"
 }
 ```
 
