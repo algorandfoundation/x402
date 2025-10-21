@@ -13,13 +13,16 @@ import {
   KeyPairSigner,
   assertIsInstructionWithData,
   assertIsInstructionWithAccounts,
-  decompileTransactionMessageFetchingLookupTables,
+  decompileTransactionMessage,
   fetchEncodedAccounts,
+  ProgramDerivedAddressBump,
+  generateKeyPairSigner,
 } from "@solana/kit";
 import { PaymentPayload, PaymentRequirements, ExactSvmPayload } from "../../../../types/verify";
 import { Network } from "../../../../types";
 import { SCHEME } from "../../";
 import * as SvmShared from "../../../../shared/svm";
+import * as rpc from "../../../../shared/svm/rpc";
 import {
   TOKEN_PROGRAM_ADDRESS,
   TokenInstruction,
@@ -49,7 +52,7 @@ vi.mock("@solana/kit", async () => {
     assertIsInstructionWithData: vi.fn(),
     assertIsInstructionWithAccounts: vi.fn(),
     getCompiledTransactionMessageDecoder: vi.fn().mockReturnValue({ decode: vi.fn() }),
-    decompileTransactionMessageFetchingLookupTables: vi.fn(),
+    decompileTransactionMessage: vi.fn(),
     fetchEncodedAccounts: vi.fn(),
   };
 });
@@ -88,8 +91,16 @@ vi.mock("../../../../shared/svm", async () => {
   return {
     ...actual,
     decodeTransactionFromPayload: vi.fn(),
-    getRpcClient: vi.fn(),
     signAndSimulateTransaction: vi.fn(),
+    getTokenPayerFromTransaction: vi.fn(),
+  };
+});
+
+vi.mock("../../../../shared/svm/rpc", async () => {
+  const actual = await vi.importActual("../../../../shared/svm/rpc");
+  return {
+    ...actual,
+    getRpcClient: vi.fn(),
   };
 });
 
@@ -286,7 +297,7 @@ describe("verify", () => {
       mockRpc = {}; // Mock rpc object
 
       vi.mocked(findAssociatedTokenPda).mockResolvedValue(["destinationAta"] as any);
-      vi.mocked(SvmShared.getRpcClient).mockReturnValue(mockRpc);
+      vi.mocked(rpc.getRpcClient).mockReturnValue(mockRpc);
       vi.mocked(fetchEncodedAccounts).mockResolvedValue([
         { address: "sourceAta", exists: true },
         { address: "destinationAta", exists: true },
@@ -295,18 +306,28 @@ describe("verify", () => {
 
     it("should not throw for valid transfer details", async () => {
       await expect(
-        verifyTransferCheckedInstruction(mockTokenInstruction, mockPaymentRequirements, {
-          txHasCreateDestATAInstruction: false,
-        }),
+        verifyTransferCheckedInstruction(
+          mockTokenInstruction,
+          mockPaymentRequirements,
+          {
+            txHasCreateDestATAInstruction: false,
+          },
+          mockRpc,
+        ),
       ).resolves.not.toThrow();
     });
 
     it("should throw for incorrect destination ATA", async () => {
       vi.mocked(findAssociatedTokenPda).mockResolvedValue(["incorrectAta"] as any);
       await expect(
-        verifyTransferCheckedInstruction(mockTokenInstruction, mockPaymentRequirements, {
-          txHasCreateDestATAInstruction: false,
-        }),
+        verifyTransferCheckedInstruction(
+          mockTokenInstruction,
+          mockPaymentRequirements,
+          {
+            txHasCreateDestATAInstruction: false,
+          },
+          mockRpc,
+        ),
       ).rejects.toThrow("invalid_exact_svm_payload_transaction_transfer_to_incorrect_ata");
     });
 
@@ -316,9 +337,14 @@ describe("verify", () => {
         { address: "destinationAta", exists: false },
       ] as any);
       await expect(
-        verifyTransferCheckedInstruction(mockTokenInstruction, mockPaymentRequirements, {
-          txHasCreateDestATAInstruction: false,
-        }),
+        verifyTransferCheckedInstruction(
+          mockTokenInstruction,
+          mockPaymentRequirements,
+          {
+            txHasCreateDestATAInstruction: false,
+          },
+          mockRpc,
+        ),
       ).rejects.toThrow("invalid_exact_svm_payload_transaction_receiver_ata_not_found");
     });
 
@@ -328,18 +354,28 @@ describe("verify", () => {
         { address: "destinationAta", exists: true },
       ] as any);
       await expect(
-        verifyTransferCheckedInstruction(mockTokenInstruction, mockPaymentRequirements, {
-          txHasCreateDestATAInstruction: false,
-        }),
+        verifyTransferCheckedInstruction(
+          mockTokenInstruction,
+          mockPaymentRequirements,
+          {
+            txHasCreateDestATAInstruction: false,
+          },
+          mockRpc,
+        ),
       ).rejects.toThrow("invalid_exact_svm_payload_transaction_sender_ata_not_found");
     });
 
     it("should throw for amount mismatch", async () => {
       mockPaymentRequirements.maxAmountRequired = "1001";
       await expect(
-        verifyTransferCheckedInstruction(mockTokenInstruction, mockPaymentRequirements, {
-          txHasCreateDestATAInstruction: false,
-        }),
+        verifyTransferCheckedInstruction(
+          mockTokenInstruction,
+          mockPaymentRequirements,
+          {
+            txHasCreateDestATAInstruction: false,
+          },
+          mockRpc,
+        ),
       ).rejects.toThrow("invalid_exact_svm_payload_transaction_amount_mismatch");
     });
 
@@ -349,25 +385,32 @@ describe("verify", () => {
         { address: "destinationAta", exists: false },
       ] as any);
       await expect(
-        verifyTransferCheckedInstruction(mockTokenInstruction, mockPaymentRequirements, {
-          txHasCreateDestATAInstruction: true,
-        }),
+        verifyTransferCheckedInstruction(
+          mockTokenInstruction,
+          mockPaymentRequirements,
+          {
+            txHasCreateDestATAInstruction: true,
+          },
+          mockRpc,
+        ),
       ).resolves.not.toThrow();
     });
   });
 
   describe("verify high level flow", () => {
     let mockSigner: KeyPairSigner;
+    let mockPayerAddress: string;
     let mockPayload: PaymentPayload;
     let mockRequirements: PaymentRequirements;
     let mockComputeLimitInstruction: any;
     let mockComputePriceInstruction: any;
     let mockTransferInstruction: any;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       vi.clearAllMocks();
 
       mockSigner = {} as any;
+      mockPayerAddress = (await generateKeyPairSigner()).address;
       mockPayload = {
         scheme: SCHEME,
         network: "solana-devnet",
@@ -404,8 +447,8 @@ describe("verify", () => {
         signatures: {},
         messageBytes: new Uint8Array(),
       } as any);
-      vi.mocked(SvmShared.getRpcClient).mockReturnValue({} as any);
-      vi.mocked(decompileTransactionMessageFetchingLookupTables).mockResolvedValue({
+      vi.mocked(rpc.getRpcClient).mockReturnValue({} as any);
+      vi.mocked(decompileTransactionMessage).mockReturnValue({
         instructions: [
           mockComputeLimitInstruction,
           mockComputePriceInstruction,
@@ -438,11 +481,13 @@ describe("verify", () => {
         },
       } as any);
       vi.mocked(identifyToken2022Instruction).mockReturnValue(Token2022Instruction.TransferChecked);
+      vi.mocked(SvmShared.getTokenPayerFromTransaction).mockReturnValue(mockPayerAddress);
     });
 
     it("should return isValid: true for a valid transaction", async () => {
       const result = await verify(mockSigner, mockPayload, mockRequirements);
       expect(result.isValid).toBe(true);
+      expect(result.payer).toBe(mockPayerAddress);
     });
 
     it("should return isValid: false if schemes or networks are invalid", async () => {
@@ -463,7 +508,7 @@ describe("verify", () => {
     });
 
     it("should return isValid: false if instruction validation fails", async () => {
-      vi.mocked(decompileTransactionMessageFetchingLookupTables).mockResolvedValue({
+      vi.mocked(decompileTransactionMessage).mockReturnValue({
         instructions: [mockTransferInstruction, mockTransferInstruction],
       } as any);
       const result = await verify(mockSigner, mockPayload, mockRequirements);
@@ -499,6 +544,7 @@ describe("verify", () => {
     let mockComputePriceInstruction: any;
     let mockTransferInstruction: any;
     let mockCreateATAInstruction: any;
+    let mockRpc: any;
 
     beforeEach(() => {
       vi.clearAllMocks();
@@ -510,7 +556,7 @@ describe("verify", () => {
         maxAmountRequired: "1000",
         asset: devnetUSDCAddress,
       } as any;
-
+      mockRpc = {};
       mockComputeLimitInstruction = {
         programAddress: { toString: () => COMPUTE_BUDGET_PROGRAM_ADDRESS.toString() },
         data: new Uint8Array([2, 100, 25, 0, 0]),
@@ -552,7 +598,7 @@ describe("verify", () => {
         { address: "sourceAta", exists: true },
         { address: "destinationAta", exists: true },
       ] as any);
-      vi.mocked(SvmShared.getRpcClient).mockReturnValue({} as any);
+      vi.mocked(rpc.getRpcClient).mockReturnValue({} as any);
       vi.mocked(parseCreateAssociatedTokenInstruction).mockReturnValue({
         accounts: {
           owner: { address: "payToAddress" },
@@ -567,7 +613,7 @@ describe("verify", () => {
       };
 
       await expect(
-        verifyTransactionInstructions(mockTransactionMessage, mockPaymentRequirements),
+        verifyTransactionInstructions(mockTransactionMessage, mockPaymentRequirements, mockRpc),
       ).rejects.toThrow("invalid_exact_svm_payload_transaction_instructions_length");
     });
 
@@ -583,7 +629,7 @@ describe("verify", () => {
       };
 
       await expect(
-        verifyTransactionInstructions(mockTransactionMessage, mockPaymentRequirements),
+        verifyTransactionInstructions(mockTransactionMessage, mockPaymentRequirements, mockRpc),
       ).rejects.toThrow("invalid_exact_svm_payload_transaction_instructions_length");
     });
 
@@ -602,7 +648,7 @@ describe("verify", () => {
       ] as any);
 
       await expect(
-        verifyTransactionInstructions(mockTransactionMessage, mockPaymentRequirements),
+        verifyTransactionInstructions(mockTransactionMessage, mockPaymentRequirements, mockRpc),
       ).rejects.toThrow("invalid_exact_svm_payload_transaction_receiver_ata_not_found");
     });
 
@@ -621,7 +667,7 @@ describe("verify", () => {
       });
 
       await expect(
-        verifyTransactionInstructions(mockTransactionMessage, mockPaymentRequirements),
+        verifyTransactionInstructions(mockTransactionMessage, mockPaymentRequirements, mockRpc),
       ).rejects.toThrow("invalid_exact_svm_payload_transaction_create_ata_instruction");
     });
 
@@ -641,7 +687,7 @@ describe("verify", () => {
       };
 
       await expect(
-        verifyTransactionInstructions(mockTransactionMessage, mockPaymentRequirements),
+        verifyTransactionInstructions(mockTransactionMessage, mockPaymentRequirements, mockRpc),
       ).resolves.not.toThrow();
     });
   });
@@ -741,6 +787,235 @@ describe("verify", () => {
       expect(() => verifyComputePriceInstruction(mockInstruction)).toThrow(
         "invalid_exact_svm_payload_transaction_instructions_compute_price_instruction_too_high",
       );
+    });
+  });
+
+  describe("Custom RPC Configuration", () => {
+    const mockPaymentRequirements: PaymentRequirements = {
+      scheme: SCHEME,
+      network: "solana-devnet" as Network,
+      payTo: "TestRecipient111111111111111111111111111" as any,
+      asset: "TestToken1111111111111111111111111111111" as any,
+      maxAmountRequired: "1000000",
+      resource: "http://example.com/resource",
+      description: "Test payment",
+      mimeType: "application/json",
+      maxTimeoutSeconds: 300,
+    };
+
+    const mockPayload: PaymentPayload = {
+      scheme: SCHEME,
+      network: "solana-devnet" as Network,
+      x402Version: 1,
+      payload: {
+        transaction: "base64encodedtransaction",
+      } as ExactSvmPayload,
+    };
+
+    const mockSigner = {
+      address: "TestSigner1111111111111111111111111111" as any,
+      keyPair: {} as any,
+    } as KeyPairSigner;
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("should use custom RPC URL from config during verification", async () => {
+      // Arrange
+      const customRpcUrl = "http://localhost:8899";
+      const config = { svmConfig: { rpcUrl: customRpcUrl } };
+
+      const mockRpcClient = {
+        getLatestBlockhash: vi.fn().mockReturnValue({
+          send: vi.fn().mockResolvedValue({
+            value: { blockhash: "test", lastValidBlockHeight: 100 },
+          }),
+        }),
+      };
+
+      vi.spyOn(rpc, "getRpcClient").mockReturnValue(mockRpcClient as any);
+      vi.spyOn(SvmShared, "decodeTransactionFromPayload").mockReturnValue({
+        messageBytes: new Uint8Array(),
+        signatures: [],
+      } as any);
+      vi.spyOn(SvmShared, "signAndSimulateTransaction").mockResolvedValue({
+        value: { err: null },
+      } as any);
+
+      vi.mocked(decompileTransactionMessage).mockReturnValue({
+        instructions: [
+          {
+            programAddress: COMPUTE_BUDGET_PROGRAM_ADDRESS,
+            data: new Uint8Array([2, 0, 0, 0, 232, 3, 0, 0]),
+          } as any,
+          {
+            programAddress: COMPUTE_BUDGET_PROGRAM_ADDRESS,
+            data: new Uint8Array([3, 1, 0, 0, 0, 0, 0, 0, 0]),
+          } as any,
+          {
+            programAddress: TOKEN_PROGRAM_ADDRESS,
+            data: new Uint8Array([12]),
+            accounts: [] as any,
+          } as any,
+        ],
+      } as any);
+
+      vi.mocked(identifyTokenInstruction).mockReturnValue(TokenInstruction.TransferChecked);
+      vi.mocked(parseTransferCheckedInstructionToken).mockReturnValue({
+        programAddress: TOKEN_PROGRAM_ADDRESS,
+        accounts: {
+          source: { address: "Source111111111111111111111111111111111" as any },
+          destination: { address: "Dest11111111111111111111111111111111111" as any },
+        },
+        data: { amount: 1000000n },
+      } as any);
+
+      vi.mocked(findAssociatedTokenPda).mockResolvedValue([
+        "Dest11111111111111111111111111111111111" as any,
+        255 as ProgramDerivedAddressBump,
+      ]);
+      vi.mocked(fetchEncodedAccounts).mockResolvedValue([
+        { exists: true, address: "Source111111111111111111111111111111111" as any },
+        { exists: true, address: "Dest11111111111111111111111111111111111" as any },
+      ] as any);
+
+      // Act
+      await verify(mockSigner, mockPayload, mockPaymentRequirements, config);
+
+      // Assert
+      expect(rpc.getRpcClient).toHaveBeenCalledWith("solana-devnet", customRpcUrl);
+    });
+
+    it("should use custom RPC URL during transaction introspection", async () => {
+      // Arrange
+      const customRpcUrl = "https://custom-mainnet.com";
+      const config = { svmConfig: { rpcUrl: customRpcUrl } };
+      const mainnetRequirements = { ...mockPaymentRequirements, network: "solana" as Network };
+      const mainnetPayload = { ...mockPayload, network: "solana" as Network };
+
+      const mockRpcClient = {
+        getLatestBlockhash: vi.fn().mockReturnValue({
+          send: vi.fn().mockResolvedValue({
+            value: { blockhash: "test", lastValidBlockHeight: 100 },
+          }),
+        }),
+      };
+
+      vi.spyOn(rpc, "getRpcClient").mockReturnValue(mockRpcClient as any);
+      vi.spyOn(SvmShared, "decodeTransactionFromPayload").mockReturnValue({
+        messageBytes: new Uint8Array(),
+        signatures: [],
+      } as any);
+      vi.spyOn(SvmShared, "signAndSimulateTransaction").mockResolvedValue({
+        value: { err: null },
+      } as any);
+
+      vi.mocked(decompileTransactionMessage).mockReturnValue({
+        instructions: [
+          {
+            programAddress: COMPUTE_BUDGET_PROGRAM_ADDRESS,
+            data: new Uint8Array([2, 0, 0, 0, 232, 3, 0, 0]),
+          } as any,
+          {
+            programAddress: COMPUTE_BUDGET_PROGRAM_ADDRESS,
+            data: new Uint8Array([3, 1, 0, 0, 0, 0, 0, 0, 0]),
+          } as any,
+          {
+            programAddress: TOKEN_PROGRAM_ADDRESS,
+            data: new Uint8Array([12]),
+            accounts: [] as any,
+          } as any,
+        ],
+      } as any);
+
+      vi.mocked(identifyTokenInstruction).mockReturnValue(TokenInstruction.TransferChecked);
+      vi.mocked(parseTransferCheckedInstructionToken).mockReturnValue({
+        programAddress: TOKEN_PROGRAM_ADDRESS,
+        accounts: {
+          source: { address: "Source111111111111111111111111111111111" as any },
+          destination: { address: "Dest11111111111111111111111111111111111" as any },
+        },
+        data: { amount: 1000000n },
+      } as any);
+
+      vi.mocked(findAssociatedTokenPda).mockResolvedValue([
+        "Dest11111111111111111111111111111111111" as any,
+        255 as ProgramDerivedAddressBump,
+      ]);
+      vi.mocked(fetchEncodedAccounts).mockResolvedValue([
+        { exists: true, address: "Source111111111111111111111111111111111" as any },
+        { exists: true, address: "Dest11111111111111111111111111111111111" as any },
+      ] as any);
+
+      // Act
+      await verify(mockSigner, mainnetPayload, mainnetRequirements, config);
+
+      // Assert
+      expect(rpc.getRpcClient).toHaveBeenCalledWith("solana", customRpcUrl);
+    });
+
+    it("should work without config (backward compatibility)", async () => {
+      // Arrange
+      const mockRpcClient = {
+        getLatestBlockhash: vi.fn().mockReturnValue({
+          send: vi.fn().mockResolvedValue({
+            value: { blockhash: "test", lastValidBlockHeight: 100 },
+          }),
+        }),
+      };
+
+      vi.spyOn(rpc, "getRpcClient").mockReturnValue(mockRpcClient as any);
+      vi.spyOn(SvmShared, "decodeTransactionFromPayload").mockReturnValue({
+        messageBytes: new Uint8Array(),
+        signatures: [],
+      } as any);
+      vi.spyOn(SvmShared, "signAndSimulateTransaction").mockResolvedValue({
+        value: { err: null },
+      } as any);
+
+      vi.mocked(decompileTransactionMessage).mockReturnValue({
+        instructions: [
+          {
+            programAddress: COMPUTE_BUDGET_PROGRAM_ADDRESS,
+            data: new Uint8Array([2, 0, 0, 0, 232, 3, 0, 0]),
+          } as any,
+          {
+            programAddress: COMPUTE_BUDGET_PROGRAM_ADDRESS,
+            data: new Uint8Array([3, 1, 0, 0, 0, 0, 0, 0, 0]),
+          } as any,
+          {
+            programAddress: TOKEN_PROGRAM_ADDRESS,
+            data: new Uint8Array([12]),
+            accounts: [] as any,
+          } as any,
+        ],
+      } as any);
+
+      vi.mocked(identifyTokenInstruction).mockReturnValue(TokenInstruction.TransferChecked);
+      vi.mocked(parseTransferCheckedInstructionToken).mockReturnValue({
+        programAddress: TOKEN_PROGRAM_ADDRESS,
+        accounts: {
+          source: { address: "Source111111111111111111111111111111111" as any },
+          destination: { address: "Dest11111111111111111111111111111111111" as any },
+        },
+        data: { amount: 1000000n },
+      } as any);
+
+      vi.mocked(findAssociatedTokenPda).mockResolvedValue([
+        "Dest11111111111111111111111111111111111" as any,
+        255 as ProgramDerivedAddressBump,
+      ]);
+      vi.mocked(fetchEncodedAccounts).mockResolvedValue([
+        { exists: true, address: "Source111111111111111111111111111111111" as any },
+        { exists: true, address: "Dest11111111111111111111111111111111111" as any },
+      ] as any);
+
+      // Act
+      await verify(mockSigner, mockPayload, mockPaymentRequirements);
+
+      // Assert - should use defaults (undefined)
+      expect(rpc.getRpcClient).toHaveBeenCalledWith("solana-devnet", undefined);
     });
   });
 });

@@ -1,9 +1,9 @@
 {
   "name": "x402",
-  "version": "0.5.3",
+  "version": "0.6.6",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/cjs/index.d.ts",
   "scripts": {
     "start": "tsx --env-file=.env index.ts",
     "build": "tsup",
@@ -119,6 +119,16 @@
       "require": {
         "types": "./dist/cjs/facilitator/index.d.ts",
         "default": "./dist/cjs/facilitator/index.js"
+      }
+    },
+    "./paywall": {
+      "import": {
+        "types": "./dist/esm/paywall/index.d.mts",
+        "default": "./dist/esm/paywall/index.mjs"
+      },
+      "require": {
+        "types": "./dist/cjs/paywall/index.d.ts",
+        "default": "./dist/cjs/paywall/index.js"
       }
     },
     "./types": {

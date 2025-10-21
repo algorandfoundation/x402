@@ -10,7 +10,19 @@ import type {
   PublicClient,
   LocalAccount,
 } from "viem";
-import { baseSepolia, avalancheFuji, base, sei, seiTestnet } from "viem/chains";
+import {
+  baseSepolia,
+  avalancheFuji,
+  base,
+  sei,
+  seiTestnet,
+  polygon,
+  polygonAmoy,
+  peaq,
+  avalanche,
+  iotexTestnet,
+  iotex,
+} from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { Hex } from "viem";
 
@@ -171,7 +183,7 @@ export function isAccount<
  * @param network - The network string to convert to a Chain object
  * @returns The corresponding Chain object
  */
-function getChainFromNetwork(network: string | undefined): Chain {
+export function getChainFromNetwork(network: string | undefined): Chain {
   if (!network) {
     throw new Error("NETWORK environment variable is not set");
   }
@@ -181,12 +193,24 @@ function getChainFromNetwork(network: string | undefined): Chain {
       return base;
     case "base-sepolia":
       return baseSepolia;
+    case "avalanche":
+      return avalanche;
     case "avalanche-fuji":
       return avalancheFuji;
     case "sei":
       return sei;
     case "sei-testnet":
       return seiTestnet;
+    case "polygon":
+      return polygon;
+    case "polygon-amoy":
+      return polygonAmoy;
+    case "peaq":
+      return peaq;
+    case "iotex":
+      return iotex;
+    case "iotex-testnet":
+      return iotexTestnet;
     default:
       throw new Error(`Unsupported network: ${network}`);
   }

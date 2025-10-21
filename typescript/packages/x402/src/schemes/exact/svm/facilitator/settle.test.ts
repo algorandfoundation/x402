@@ -4,16 +4,14 @@ import { type KeyPairSigner, generateKeyPairSigner } from "@solana/kit";
 import * as solanaKit from "@solana/kit";
 import * as transactionConfirmation from "@solana/transaction-confirmation";
 import { PaymentPayload, PaymentRequirements, ExactSvmPayload } from "../../../../types/verify";
-import {
-  decodeTransactionFromPayload,
-  getRpcClient,
-  getRpcSubscriptions,
-} from "../../../../shared/svm";
+import { decodeTransactionFromPayload, getTokenPayerFromTransaction } from "../../../../shared/svm";
+import { getRpcClient, getRpcSubscriptions } from "../../../../shared/svm/rpc";
 import { verify } from "./verify";
 import * as settleModule from "./settle";
 
 // Mocking dependencies
 vi.mock("../../../../shared/svm");
+vi.mock("../../../../shared/svm/rpc");
 vi.mock("./verify");
 vi.mock("@solana/kit", async importOriginal => {
   const actual = await importOriginal<typeof solanaKit>();
@@ -46,6 +44,7 @@ vi.mock("@solana/transaction-confirmation", async importOriginal => {
 
 describe("SVM Settle", () => {
   let signer: KeyPairSigner;
+  let payerAddress: string;
   let paymentPayload: PaymentPayload;
   let paymentRequirements: PaymentRequirements;
   let mockRpcClient: any;
@@ -54,6 +53,7 @@ describe("SVM Settle", () => {
 
   beforeAll(async () => {
     signer = await generateKeyPairSigner();
+    payerAddress = (await generateKeyPairSigner()).address;
     const payToAddress = (await generateKeyPairSigner()).address;
     const assetAddress = (await generateKeyPairSigner()).address;
 
@@ -131,6 +131,7 @@ describe("SVM Settle", () => {
         instructions: [],
         version: 0,
       } as any);
+      vi.mocked(getTokenPayerFromTransaction).mockReturnValue(payerAddress);
       vi.mocked(transactionConfirmation.waitForRecentTransactionConfirmation).mockResolvedValue(
         undefined,
       );
@@ -139,7 +140,7 @@ describe("SVM Settle", () => {
       const result = await settleModule.settle(signer, paymentPayload, paymentRequirements);
 
       // Assert
-      expect(verify).toHaveBeenCalledWith(signer, paymentPayload, paymentRequirements);
+      expect(verify).toHaveBeenCalledWith(signer, paymentPayload, paymentRequirements, undefined);
       expect(decodeTransactionFromPayload).toHaveBeenCalledWith(paymentPayload.payload);
       expect(transactionConfirmation.waitForRecentTransactionConfirmation).toHaveBeenCalledOnce();
       expect(solanaKit.signTransaction).toHaveBeenCalledWith(
@@ -150,7 +151,7 @@ describe("SVM Settle", () => {
       expect(result).toEqual({
         success: true,
         errorReason: undefined,
-        payer: signer.address.toString(),
+        payer: payerAddress,
         transaction: "mock_signature_123",
         network: "solana-devnet",
       });
@@ -168,7 +169,7 @@ describe("SVM Settle", () => {
       const result = await settleModule.settle(signer, paymentPayload, paymentRequirements);
 
       // Assert
-      expect(verify).toHaveBeenCalledWith(signer, paymentPayload, paymentRequirements);
+      expect(verify).toHaveBeenCalledWith(signer, paymentPayload, paymentRequirements, undefined);
       expect(result).toEqual({
         success: false,
         errorReason: "invalid_exact_svm_payload_transaction_simulation_failed",
@@ -185,9 +186,10 @@ describe("SVM Settle", () => {
       };
       vi.mocked(verify).mockResolvedValue(mockVerifyResponse);
       vi.mocked(decodeTransactionFromPayload).mockReturnValue(mockSignedTransaction);
+      vi.mocked(getTokenPayerFromTransaction).mockReturnValue(payerAddress);
       vi.mocked(getRpcClient).mockReturnValue(mockRpcClient);
       vi.mocked(getRpcSubscriptions).mockReturnValue(mockRpcSubscriptions);
-      // Mock the \sendAndConfirmSignedTransaction to throw an error
+      // Mock the sendAndConfirmSignedTransaction to throw an error
       vi.mocked(mockRpcClient.sendTransaction).mockReturnValue({
         send: vi.fn().mockRejectedValue(new Error("Unexpected error")),
       });
@@ -201,6 +203,7 @@ describe("SVM Settle", () => {
         errorReason: "unexpected_settle_error",
         network: "solana-devnet",
         transaction: "mock_signature_123",
+        payer: payerAddress,
       });
     });
   });
@@ -413,6 +416,123 @@ describe("SVM Settle", () => {
           mockRpcSubscriptions,
         ),
       ).rejects.toThrow("Unexpected error");
+    });
+  });
+
+  describe("Custom RPC Configuration", () => {
+    it("should use custom RPC URL from config for both client and subscriptions", async () => {
+      // Arrange
+      const customRpcUrl = "http://localhost:8899";
+      const config = { svmConfig: { rpcUrl: customRpcUrl } };
+      const mockVerifyResponse = {
+        isValid: true,
+        invalidReason: undefined,
+      };
+      vi.mocked(verify).mockResolvedValue(mockVerifyResponse);
+      vi.mocked(decodeTransactionFromPayload).mockReturnValue(mockSignedTransaction);
+      vi.mocked(getRpcClient).mockReturnValue(mockRpcClient);
+      vi.mocked(getRpcSubscriptions).mockReturnValue(mockRpcSubscriptions);
+      vi.mocked(mockRpcClient.sendTransaction).mockReturnValue({
+        send: vi.fn().mockResolvedValue("mock_signature_123"),
+      });
+      vi.mocked(solanaKit.getCompiledTransactionMessageDecoder).mockReturnValue({
+        decode: vi.fn().mockReturnValue({}),
+        read: vi.fn(),
+      } as any);
+      vi.mocked(solanaKit.decompileTransactionMessageFetchingLookupTables).mockResolvedValue({
+        lifetimeConstraint: {
+          blockhash: "mock_blockhash" as any,
+          lastValidBlockHeight: BigInt(1234),
+        },
+        instructions: [],
+        version: 0,
+      } as any);
+      vi.mocked(transactionConfirmation.waitForRecentTransactionConfirmation).mockResolvedValue(
+        undefined,
+      );
+
+      // Act
+      await settleModule.settle(signer, paymentPayload, paymentRequirements, config);
+
+      // Assert
+      expect(getRpcClient).toHaveBeenCalledWith("solana-devnet", customRpcUrl);
+      expect(getRpcSubscriptions).toHaveBeenCalledWith("solana-devnet", customRpcUrl);
+    });
+
+    it("should propagate config to verify() call", async () => {
+      // Arrange
+      const customRpcUrl = "https://api.mainnet-beta.solana.com";
+      const config = { svmConfig: { rpcUrl: customRpcUrl } };
+      const mockVerifyResponse = {
+        isValid: true,
+        invalidReason: undefined,
+      };
+      vi.mocked(verify).mockResolvedValue(mockVerifyResponse);
+      vi.mocked(decodeTransactionFromPayload).mockReturnValue(mockSignedTransaction);
+      vi.mocked(getRpcClient).mockReturnValue(mockRpcClient);
+      vi.mocked(getRpcSubscriptions).mockReturnValue(mockRpcSubscriptions);
+      vi.mocked(mockRpcClient.sendTransaction).mockReturnValue({
+        send: vi.fn().mockResolvedValue("mock_signature_123"),
+      });
+      vi.mocked(solanaKit.getCompiledTransactionMessageDecoder).mockReturnValue({
+        decode: vi.fn().mockReturnValue({}),
+        read: vi.fn(),
+      } as any);
+      vi.mocked(solanaKit.decompileTransactionMessageFetchingLookupTables).mockResolvedValue({
+        lifetimeConstraint: {
+          blockhash: "mock_blockhash" as any,
+          lastValidBlockHeight: BigInt(1234),
+        },
+        instructions: [],
+        version: 0,
+      } as any);
+      vi.mocked(transactionConfirmation.waitForRecentTransactionConfirmation).mockResolvedValue(
+        undefined,
+      );
+
+      // Act
+      await settleModule.settle(signer, paymentPayload, paymentRequirements, config);
+
+      // Assert
+      expect(verify).toHaveBeenCalledWith(signer, paymentPayload, paymentRequirements, config);
+    });
+
+    it("should work without config (backward compatibility)", async () => {
+      // Arrange
+      const mockVerifyResponse = {
+        isValid: true,
+        invalidReason: undefined,
+      };
+      vi.mocked(verify).mockResolvedValue(mockVerifyResponse);
+      vi.mocked(decodeTransactionFromPayload).mockReturnValue(mockSignedTransaction);
+      vi.mocked(getRpcClient).mockReturnValue(mockRpcClient);
+      vi.mocked(getRpcSubscriptions).mockReturnValue(mockRpcSubscriptions);
+      vi.mocked(mockRpcClient.sendTransaction).mockReturnValue({
+        send: vi.fn().mockResolvedValue("mock_signature_123"),
+      });
+      vi.mocked(solanaKit.getCompiledTransactionMessageDecoder).mockReturnValue({
+        decode: vi.fn().mockReturnValue({}),
+        read: vi.fn(),
+      } as any);
+      vi.mocked(solanaKit.decompileTransactionMessageFetchingLookupTables).mockResolvedValue({
+        lifetimeConstraint: {
+          blockhash: "mock_blockhash" as any,
+          lastValidBlockHeight: BigInt(1234),
+        },
+        instructions: [],
+        version: 0,
+      } as any);
+      vi.mocked(transactionConfirmation.waitForRecentTransactionConfirmation).mockResolvedValue(
+        undefined,
+      );
+
+      // Act
+      await settleModule.settle(signer, paymentPayload, paymentRequirements);
+
+      // Assert
+      expect(verify).toHaveBeenCalledWith(signer, paymentPayload, paymentRequirements, undefined);
+      expect(getRpcClient).toHaveBeenCalledWith("solana-devnet", undefined);
+      expect(getRpcSubscriptions).toHaveBeenCalledWith("solana-devnet", undefined);
     });
   });
 

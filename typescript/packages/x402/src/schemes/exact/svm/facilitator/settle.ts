@@ -5,6 +5,7 @@ import {
   ExactSvmPayload,
   ErrorReasons,
 } from "../../../../types/verify";
+import { X402Config } from "../../../../types/config";
 import {
   assertIsTransactionMessageWithBlockhashLifetime,
   Commitment,
@@ -22,11 +23,8 @@ import {
   RpcDevnet,
   RpcMainnet,
 } from "@solana/kit";
-import {
-  decodeTransactionFromPayload,
-  getRpcClient,
-  getRpcSubscriptions,
-} from "../../../../shared/svm";
+import { decodeTransactionFromPayload, getTokenPayerFromTransaction } from "../../../../shared/svm";
+import { getRpcClient, getRpcSubscriptions } from "../../../../shared/svm/rpc";
 import {
   createBlockHeightExceedencePromiseFactory,
   waitForRecentTransactionConfirmation,
@@ -41,14 +39,16 @@ import { verify } from "./verify";
  * @param signer - The signer that will sign the transaction
  * @param payload - The payment payload to settle
  * @param paymentRequirements - The payment requirements to settle against
+ * @param config - Optional configuration for X402 operations (e.g., custom RPC URLs)
  * @returns A SettleResponse indicating if the payment is settled and any error reason
  */
 export async function settle(
   signer: KeyPairSigner,
   payload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
+  config?: X402Config,
 ): Promise<SettleResponse> {
-  const verifyResponse = await verify(signer, payload, paymentRequirements);
+  const verifyResponse = await verify(signer, payload, paymentRequirements, config);
   if (!verifyResponse.isValid) {
     return {
       success: false,
@@ -61,10 +61,13 @@ export async function settle(
   const svmPayload = payload.payload as ExactSvmPayload;
   const decodedTransaction = decodeTransactionFromPayload(svmPayload);
   const signedTransaction = await signTransaction([signer.keyPair], decodedTransaction);
-  const payer = signer.address.toString();
+  const payer = getTokenPayerFromTransaction(decodedTransaction);
 
-  const rpc = getRpcClient(payload.network);
-  const rpcSubscriptions = getRpcSubscriptions(payload.network);
+  const rpc = getRpcClient(paymentRequirements.network, config?.svmConfig?.rpcUrl);
+  const rpcSubscriptions = getRpcSubscriptions(
+    paymentRequirements.network,
+    config?.svmConfig?.rpcUrl,
+  );
 
   try {
     const { success, errorReason, signature } = await sendAndConfirmSignedTransaction(
@@ -87,6 +90,7 @@ export async function settle(
       errorReason: "unexpected_settle_error",
       network: payload.network,
       transaction: getSignatureFromTransaction(signedTransaction),
+      payer,
     };
   }
 }
