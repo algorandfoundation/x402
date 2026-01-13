@@ -66,12 +66,8 @@ Full `paymentRequirements` Example:
 ```json
 {
   "scheme": "exact",
-  "network": "algorand-mainnet",
-  "maxAmountRequired": "5000000",
-  "resource": "https://example.net/signup",
-  "description": "$5 registration payment",
-  "mimeType": "text/html",
-  "outputSchema": null,
+  "network": "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
+  "amount": "5000000",
   "payTo": "RESOURCESERVERADDRESSAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALTSRPAE",
   "maxTimeoutSeconds": 60,
   "asset": "31566704",
@@ -108,13 +104,31 @@ Example of a USDC asset transfer with an abstracted fee (i.e paid by the facilit
 }
 ```
 
-### Full `X-PAYMENT` header example:
+### Full `PAYMENT-SIGNATURE` header example:
 
 ```json
 {
-  "x402Version": 1,
+  "x402Version": 2,
   "scheme": "exact",
-  "network": "algorand-mainnet",
+  "network": "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
+  "resource": { 
+    "url": "https://example.net/signup",
+    "description": "$5 registration payment",
+    "mimeType": "text/html"
+  },
+  "accepted": {
+    "scheme": "exact",
+    "network": "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
+    "amount": "5000000",
+    "payTo": "RESOURCESERVERADDRESSAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALTSRPAE",
+    "maxTimeoutSeconds": 60,
+    "asset": "31566704",
+    "extra": {
+      "feePayer": "FACILITATORADDRESSAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALQCXBZE",
+    }
+  },
+  "extensions": {},
+  "outputSchema": null,
   "payload": {
     "paymentIndex": 1,
     "paymentGroup": [
@@ -125,20 +139,20 @@ Example of a USDC asset transfer with an abstracted fee (i.e paid by the facilit
 }
 ```
 
-## `X-Payment-Response` Header
+## `PAYMENT-RESPONSE` Header
 
-Upon a successful settlement, the `X-PAYMENT-RESPONSE` **MUST** return the transaction ID of the `paymentGroup[paymentIndex]` transaction. This identifies the specific asset transfer transaction to the `payTo` address for the `maxAmountRequired`, and can be used to identify the transaction on the network.
+Upon a successful settlement, the `PAYMENT-RESPONSE` **MUST** return the transaction ID of the `paymentGroup[paymentIndex]` transaction. This identifies the specific asset transfer transaction to the `payTo` address for the `maxAmountRequired`, and can be used to identify the transaction on the network.
 
 Should the settlement fail, the transaction ID **SHOULD** be returned, but since failed transactions are not committed to the network, it might not be visible on the chain.
 
-### Full `X-PAYMENT-RESPONSE` header example:
-
+### Full `PAYMENT-RESPONSE` header example:
 ```json
 {
   "success": true,
-  "error": null,
-  "txHash": "NTRZR6HGMMZGYMJKUNVNLKLA427ACAVIPFNC6JHA5XNBQQHW7MWA",
-  "networkId": "algorand-mainnet"
+  "errorReason": null,
+  "payer": "<payer>",
+  "transaction", "NTRZR6HGMMZGYMJKUNVNLKLA427ACAVIPFNC6JHA5XNBQQHW7MWA",
+  "network": "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8="
 }
 ```
 
@@ -147,16 +161,16 @@ Should the settlement fail, the transaction ID **SHOULD** be returned, but since
 Steps to verify a payment for the `exact` scheme on Algorand:
 
 1. Check the `paymentGroup` contains 16 or fewer elements.
-1. Decode all transactions from the `paymentGrouop`.
-1. Locate the `paymentGroup[paymentIndex]` transaction from the `Payment Payload`.
+2. Decode all transactions from the `paymentGroup`.
+3. Locate the `paymentGroup[paymentIndex]` transaction from the `Payment Payload`.
     1. Check the `aamt` (asset amount) matches `maxAmountRequired` from the `Payment Requirements`.
-    1. Check the `arcv` (asset receiver) matches `payTo` from the `Payment Requirements`.
-1. Locate all transactions where for `snd` (sender) is the `Facilitator`s Algorand address.
+    2. Check the `arcv` (asset receiver) matches `payTo` from the `Payment Requirements`.
+4. Locate all transactions where for `snd` (sender) is the `Facilitator`s Algorand address.
     1. Check the `type` (transaction type) is `pay`.
-    1. Check the following fields are omitted: `close`, `rekey`, `amt`.
-    1. Check the `fee` (Fee) is a reasonable amount.
-    1. Sign the transaction.
-1. Evaluate the payment group against an Algorand node's `simulate` endpoint to ensure the transactions would succeed.
+    2. Check the following fields are omitted: `close`, `rekey`, `amt`.
+    3. Check the `fee` (Fee) is a reasonable amount.
+    4. Sign the transaction.
+5. Evaluate the payment group against an Algorand node's `simulate` endpoint to ensure the transactions would succeed.
 
 ## Settlement
 
