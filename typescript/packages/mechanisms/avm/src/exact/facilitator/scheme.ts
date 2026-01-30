@@ -38,6 +38,10 @@ export const VerifyErrorReason = {
   FEE_TOO_HIGH: "Fee payer transaction fee exceeds maximum",
   PAYMENT_NOT_SIGNED: "Payment transaction is not signed",
   SIMULATION_FAILED: "Transaction simulation failed",
+  // Security error reasons
+  SECURITY_REKEY_NOT_ALLOWED: "Rekey transactions are not allowed",
+  SECURITY_CLOSE_TO_NOT_ALLOWED: "Close-to transactions are not allowed",
+  SECURITY_KEYREG_NOT_ALLOWED: "Key registration transactions are not allowed",
 } as const;
 
 /**
@@ -197,6 +201,14 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
         }
       }
     }
+
+    // Apply security checks to ALL transactions in the group
+    const securityCheck = this.verifySecurityConstraints(decodedTxns);
+    if (!securityCheck.isValid) {
+      console.log("[x402 AVM Facilitator] Security check failed:", securityCheck.invalidReason);
+      return securityCheck;
+    }
+    console.log("[x402 AVM Facilitator] Security checks passed for all transactions");
 
     // Verify payment transaction
     const paymentTxn = decodedTxns[paymentIndex];
@@ -547,6 +559,115 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
         isValid: false,
         invalidReason: `${VerifyErrorReason.FEE_TOO_HIGH}: ${fee} exceeds maximum ${MAX_REASONABLE_FEE}`,
       };
+    }
+
+    return { isValid: true };
+  }
+
+  /**
+   * Verifies security constraints for ALL transactions in the group.
+   *
+   * Security checks:
+   * 1. No keyreg (key registration) transactions allowed
+   * 2. No rekey transactions allowed (unless it's a rekey+rekey-back sandwich)
+   * 3. No close-to or close-remainder-to fields allowed on any transaction
+   */
+  private verifySecurityConstraints(txns: algosdk.SignedTransaction[]): VerifyResponse {
+    // Track rekey operations to detect sandwich patterns
+    const rekeyOperations: Array<{ index: number; from: string; to: string }> = [];
+
+    for (let i = 0; i < txns.length; i++) {
+      const txn = txns[i].txn;
+      const sender = algosdk.encodeAddress(txn.sender.publicKey);
+
+      // Check for keyreg transaction type - not allowed
+      if (txn.type === "keyreg") {
+        return {
+          isValid: false,
+          invalidReason: `${VerifyErrorReason.SECURITY_KEYREG_NOT_ALLOWED}: Transaction at index ${i} is a key registration transaction`,
+        };
+      }
+
+      // Check for rekey
+      if (txn.rekeyTo) {
+        const rekeyTo = algosdk.encodeAddress(txn.rekeyTo.publicKey);
+        rekeyOperations.push({ index: i, from: sender, to: rekeyTo });
+      }
+
+      // Check for close-to fields based on transaction type
+      // These are dangerous as they can drain accounts
+
+      // For payment transactions - check CloseRemainderTo
+      if (txn.type === "pay") {
+        const paymentFields = (txn as unknown as {
+          payment?: {
+            closeRemainderTo?: { publicKey: Uint8Array };
+          }
+        }).payment;
+
+        if (paymentFields?.closeRemainderTo) {
+          return {
+            isValid: false,
+            invalidReason: `${VerifyErrorReason.SECURITY_CLOSE_TO_NOT_ALLOWED}: Transaction at index ${i} has CloseRemainderTo set`,
+          };
+        }
+      }
+
+      // For asset transfer transactions - check AssetCloseTo
+      if (txn.type === "axfer") {
+        const assetTransfer = (txn as unknown as {
+          assetTransfer?: {
+            closeTo?: { publicKey: Uint8Array };
+          }
+        }).assetTransfer;
+
+        if (assetTransfer?.closeTo) {
+          return {
+            isValid: false,
+            invalidReason: `${VerifyErrorReason.SECURITY_CLOSE_TO_NOT_ALLOWED}: Transaction at index ${i} has AssetCloseTo set`,
+          };
+        }
+      }
+    }
+
+    // Validate rekey operations - only allow sandwich patterns
+    // A sandwich pattern: rekey A->B followed by rekey back to A (same sender)
+    if (rekeyOperations.length > 0) {
+      // Must have an even number of rekey operations for sandwiches
+      if (rekeyOperations.length % 2 !== 0) {
+        return {
+          isValid: false,
+          invalidReason: `${VerifyErrorReason.SECURITY_REKEY_NOT_ALLOWED}: Unbalanced rekey operations detected`,
+        };
+      }
+
+      // Group rekey operations by sender and verify each pair forms a sandwich
+      const rekeysBySender = new Map<string, typeof rekeyOperations>();
+      for (const op of rekeyOperations) {
+        const existing = rekeysBySender.get(op.from) ?? [];
+        existing.push(op);
+        rekeysBySender.set(op.from, existing);
+      }
+
+      for (const [sender, ops] of rekeysBySender) {
+        if (ops.length !== 2) {
+          return {
+            isValid: false,
+            invalidReason: `${VerifyErrorReason.SECURITY_REKEY_NOT_ALLOWED}: Sender ${sender} has ${ops.length} rekey operations, expected 2 for sandwich`,
+          };
+        }
+
+        // The second rekey's "to" should be the sender (returning authority to self)
+        const [first, second] = ops;
+        if (second.to !== sender && first.to !== second.to) {
+          return {
+            isValid: false,
+            invalidReason: `${VerifyErrorReason.SECURITY_REKEY_NOT_ALLOWED}: Rekey operations for ${sender} do not form a valid sandwich pattern`,
+          };
+        }
+      }
+
+      console.log("[x402 AVM Facilitator] Validated rekey sandwich pattern");
     }
 
     return { isValid: true };

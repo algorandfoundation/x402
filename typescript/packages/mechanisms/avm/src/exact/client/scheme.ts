@@ -73,13 +73,26 @@ export class ExactAvmScheme implements SchemeNetworkClient {
     const transactions: algosdk.Transaction[] = [];
     let paymentIndex = 0;
 
+    // Calculate total transaction count for fee pooling
+    // When fee payer exists: 1 fee payer txn + 1 ASA transfer txn = 2
+    const totalTxnCount = feePayer ? 2 : 1;
+    const minFee = suggestedParams.minFee ?? BigInt(1000);
+
     // Build fee payer transaction if specified
+    // Fee payer pays for all transactions in the group (pooled fees)
     if (feePayer) {
+      // Create params with pooled fee (minFee * number of transactions)
+      const feePayerParams = {
+        ...suggestedParams,
+        fee: minFee * BigInt(totalTxnCount),
+        flatFee: true,
+      };
+
       const feePayerTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
         sender: algosdk.Address.fromString(feePayer),
         receiver: algosdk.Address.fromString(feePayer), // Self-payment
         amount: 0,
-        suggestedParams,
+        suggestedParams: feePayerParams,
         note: new Uint8Array(Buffer.from("x402-fee-payer")),
       });
       transactions.push(feePayerTxn);
@@ -87,12 +100,17 @@ export class ExactAvmScheme implements SchemeNetworkClient {
     }
 
     // Build ASA transfer transaction
+    // When fee payer exists, set fee to 0 (fee payer covers all fees)
+    const assetTransferParams = feePayer
+      ? { ...suggestedParams, fee: BigInt(0), flatFee: true }
+      : suggestedParams;
+
     const assetTransferTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
       sender: algosdk.Address.fromString(this.signer.address),
       receiver: algosdk.Address.fromString(payTo),
       amount: BigInt(amount),
       assetIndex: Number(assetId),
-      suggestedParams,
+      suggestedParams: assetTransferParams,
       note: new Uint8Array(Buffer.from(`x402-payment-v${x402Version}`)),
     });
     transactions.push(assetTransferTxn);
