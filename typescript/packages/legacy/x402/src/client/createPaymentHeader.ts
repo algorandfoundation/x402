@@ -1,6 +1,7 @@
 import { createPaymentHeader as createPaymentHeaderExactEVM } from "../schemes/exact/evm/client";
 import { createPaymentHeader as createPaymentHeaderExactSVM } from "../schemes/exact/svm/client";
-import { isEvmSignerWallet, isMultiNetworkSigner, isSvmSignerWallet, MultiNetworkSigner, Signer, SupportedEVMNetworks, SupportedSVMNetworks } from "../types/shared";
+import { createPaymentHeader as createPaymentHeaderExactAVM } from "../schemes/exact/avm/client";
+import { isEvmSignerWallet, isMultiNetworkSigner, isSvmSignerWallet, isAvmSignerWallet, MultiNetworkSigner, Signer, SupportedEVMNetworks, SupportedSVMNetworks, SupportedAVMNetworks } from "../types/shared";
 import { PaymentRequirements } from "../types/verify";
 import { X402Config } from "../types/config";
 
@@ -49,6 +50,21 @@ export async function createPaymentHeader(
         config,
       );
     }
+
+    // avm (Algorand)
+    if (SupportedAVMNetworks.includes(paymentRequirements.network)) {
+      const avmClient = isMultiNetworkSigner(client) ? client.avm : client;
+      if (!avmClient || !isAvmSignerWallet(avmClient)) {
+        throw new Error("Invalid avm wallet client provided");
+      }
+
+      return await createPaymentHeaderExactAVM(
+        avmClient,
+        x402Version,
+        paymentRequirements,
+      );
+    }
+
     throw new Error("Unsupported network");
   }
   throw new Error("Unsupported scheme");

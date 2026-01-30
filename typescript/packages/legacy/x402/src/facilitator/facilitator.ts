@@ -1,12 +1,13 @@
 import { verify as verifyExactEvm, settle as settleExactEvm } from "../schemes/exact/evm";
 import { verify as verifyExactSvm, settle as settleExactSvm } from "../schemes/exact/svm";
-import { SupportedEVMNetworks, SupportedSVMNetworks } from "../types/shared";
+import { verify as verifyExactAvm, settle as settleExactAvm } from "../schemes/exact/avm";
+import { SupportedEVMNetworks, SupportedSVMNetworks, SupportedAVMNetworks } from "../types/shared";
 import { X402Config } from "../types/config";
 import {
   ConnectedClient as EvmConnectedClient,
   SignerWallet as EvmSignerWallet,
 } from "../types/shared/evm";
-import { ConnectedClient, Signer } from "../types/shared/wallet";
+import { ConnectedClient, Signer, AvmSigner } from "../types/shared/wallet";
 import {
   PaymentPayload,
   PaymentRequirements,
@@ -57,6 +58,15 @@ export async function verify<
         config,
       );
     }
+
+    // avm (Algorand)
+    if (SupportedAVMNetworks.includes(paymentRequirements.network)) {
+      return await verifyExactAvm(
+        client as AvmSigner,
+        payload,
+        paymentRequirements,
+      );
+    }
   }
 
   // unsupported scheme
@@ -103,6 +113,15 @@ export async function settle<transport extends Transport, chain extends Chain>(
         payload,
         paymentRequirements,
         config,
+      );
+    }
+
+    // avm (Algorand)
+    if (SupportedAVMNetworks.includes(paymentRequirements.network)) {
+      return await settleExactAvm(
+        client as AvmSigner,
+        payload,
+        paymentRequirements,
       );
     }
   }

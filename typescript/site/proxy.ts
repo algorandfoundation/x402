@@ -2,17 +2,22 @@ import { paymentProxyFromConfig } from "@x402/next";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
+import { ExactAvmScheme } from "@x402/avm/exact/server";
+import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 import { NextRequest, NextResponse } from "next/server";
 import { createPaywall } from "@x402/paywall";
 import { evmPaywall } from "@x402/paywall/evm";
 import { svmPaywall } from "@x402/paywall/svm";
+import { avmPaywall } from "@x402/paywall/avm";
 
 const evmPayeeAddress = process.env.RESOURCE_EVM_ADDRESS as `0x${string}`;
 const svmPayeeAddress = process.env.RESOURCE_SVM_ADDRESS as string;
+const avmPayeeAddress = process.env.RESOURCE_AVM_ADDRESS || process.env.RESOURCE_WALLET_ADDRESS as string;
 const facilitatorUrl = process.env.FACILITATOR_URL as string;
 
 const EVM_NETWORK = "eip155:84532" as const; // Base Sepolia
 const SVM_NETWORK = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1" as const; // Solana Devnet
+const AVM_NETWORK = ALGORAND_TESTNET_CAIP2; // Algorand Testnet
 
 // List of blocked countries and regions
 const BLOCKED_COUNTRIES = [
@@ -39,37 +44,56 @@ const facilitatorClient = new HTTPFacilitatorClient({ url: facilitatorUrl });
 const paywall = createPaywall()
   .withNetwork(evmPaywall)
   .withNetwork(svmPaywall)
+  .withNetwork(avmPaywall)
   .withConfig({
     appName: "x402 Demo",
     appLogo: "/logos/x402-examples.png",
   })
   .build();
 
+// Build accepts array based on configured addresses
+const accepts = [];
+const schemes = [];
+
+if (avmPayeeAddress) {
+  accepts.push({
+    payTo: avmPayeeAddress,
+    scheme: "exact",
+    price: "$0.01",
+    network: AVM_NETWORK,
+  });
+  schemes.push({ network: AVM_NETWORK, server: new ExactAvmScheme() });
+}
+
+if (evmPayeeAddress) {
+  accepts.push({
+    payTo: evmPayeeAddress,
+    scheme: "exact",
+    price: "$0.01",
+    network: EVM_NETWORK,
+  });
+  schemes.push({ network: EVM_NETWORK, server: new ExactEvmScheme() });
+}
+
+if (svmPayeeAddress) {
+  accepts.push({
+    payTo: svmPayeeAddress,
+    scheme: "exact",
+    price: "$0.01",
+    network: SVM_NETWORK,
+  });
+  schemes.push({ network: SVM_NETWORK, server: new ExactSvmScheme() });
+}
+
 const x402PaymentProxy = paymentProxyFromConfig(
   {
     "/protected": {
-      accepts: [
-        {
-          payTo: evmPayeeAddress,
-          scheme: "exact",
-          price: "$0.01",
-          network: EVM_NETWORK,
-        },
-        {
-          payTo: svmPayeeAddress,
-          scheme: "exact",
-          price: "$0.01",
-          network: SVM_NETWORK,
-        },
-      ],
+      accepts,
       description: "Access to protected content",
     },
   },
   facilitatorClient,
-  [
-    { network: EVM_NETWORK, server: new ExactEvmScheme() },
-    { network: SVM_NETWORK, server: new ExactSvmScheme() },
-  ],
+  schemes,
   undefined, // paywallConfig
   paywall, // paywall provider
 );

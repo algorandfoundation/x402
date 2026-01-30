@@ -25,6 +25,8 @@
     "@x402/next": "workspace:*",
     "@x402/paywall": "workspace:*",
     "@x402/svm": "workspace:*",
+    "@x402/avm": "workspace:*",
+    "algosdk": "^3.5.0",
     "lottie-react": "^2.4.1",
     "motion": "^11.18.0",
     "next": "^16.0.10",
