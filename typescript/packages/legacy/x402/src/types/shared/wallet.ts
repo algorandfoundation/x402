@@ -3,11 +3,12 @@ import * as svm from "../../shared/svm/wallet";
 import * as avm from "../../shared/avm/wallet";
 import { SupportedEVMNetworks, SupportedSVMNetworks, SupportedAVMNetworks } from "./network";
 import { Hex } from "viem";
+import { WalletAccount as AvmWalletAccount } from "../../schemes/exact/avm/types";
 
 export type ConnectedClient = evm.ConnectedClient | svm.SvmConnectedClient;
-export type Signer = evm.EvmSigner | svm.SvmSigner | avm.AvmSigner;
-export type MultiNetworkSigner = { evm: evm.EvmSigner; svm: svm.SvmSigner; avm?: avm.AvmSigner };
-export type AvmSigner = avm.AvmSigner;
+export type Signer = evm.EvmSigner | svm.SvmSigner | AvmWalletAccount;
+export type MultiNetworkSigner = { evm: evm.EvmSigner; svm: svm.SvmSigner; avm: AvmWalletAccount };
+export type AvmSigner = AvmWalletAccount;
 
 /**
  * Creates a public client configured for the specified network.
@@ -47,7 +48,7 @@ export function createSigner(network: string, privateKey: Hex | string): Promise
 
   // avm (Algorand) - expects mnemonic as privateKey
   if (SupportedAVMNetworks.find(n => n === network)) {
-    return avm.createSignerFromMnemonic(privateKey as string);
+    return Promise.resolve(avm.createSigner(network as any, privateKey as string));
   }
 
   throw new Error(`Unsupported network: ${network}`);
@@ -79,8 +80,15 @@ export function isSvmSignerWallet(wallet: Signer): wallet is svm.SvmSigner {
  * @param wallet - The object wallet to check
  * @returns True if the wallet is an AVM signer wallet, false otherwise
  */
-export function isAvmSignerWallet(wallet: Signer): wallet is avm.AvmSigner {
-  return avm.isSignerWallet(wallet);
+export function isAvmSignerWallet(wallet: Signer): wallet is AvmWalletAccount {
+  return (
+    typeof wallet === "object" &&
+    wallet !== null &&
+    "address" in wallet &&
+    "client" in wallet &&
+    "signTransactions" in wallet &&
+    typeof (wallet as AvmWalletAccount).signTransactions === "function"
+  );
 }
 
 /**

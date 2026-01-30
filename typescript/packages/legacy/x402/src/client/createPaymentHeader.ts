@@ -4,6 +4,7 @@ import { createPaymentHeader as createPaymentHeaderExactAVM } from "../schemes/e
 import { isEvmSignerWallet, isMultiNetworkSigner, isSvmSignerWallet, isAvmSignerWallet, MultiNetworkSigner, Signer, SupportedEVMNetworks, SupportedSVMNetworks, SupportedAVMNetworks } from "../types/shared";
 import { PaymentRequirements } from "../types/verify";
 import { X402Config } from "../types/config";
+import { AlgorandClient } from "../schemes/exact/avm/types";
 
 /**
  * Creates a payment header based on the provided client and payment requirements.
@@ -54,11 +55,18 @@ export async function createPaymentHeader(
     // avm (Algorand)
     if (SupportedAVMNetworks.includes(paymentRequirements.network)) {
       const avmClient = isMultiNetworkSigner(client) ? client.avm : client;
-      if (!avmClient || !isAvmSignerWallet(avmClient)) {
+      if (!isAvmSignerWallet(avmClient)) {
         throw new Error("Invalid avm wallet client provided");
       }
 
+      // Construct AlgorandClient from wallet's client and network from requirements
+      const algorandClient: AlgorandClient = {
+        client: avmClient.client,
+        network: paymentRequirements.network,
+      };
+
       return await createPaymentHeaderExactAVM(
+        algorandClient,
         avmClient,
         x402Version,
         paymentRequirements,

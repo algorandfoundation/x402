@@ -1,92 +1,166 @@
 import algosdk from "algosdk";
-import { PaymentPayload, PaymentRequirements, SettleResponse } from "../../../../types/verify";
-import { AvmSigner } from "../../../../types/shared/wallet";
-import { createAlgodClient } from "../../../../shared/avm/rpc";
-import { decodeFromBase64 } from "../../../../shared/base64";
+import {
+  PaymentPayload,
+  PaymentRequirements,
+  SettleResponse,
+} from "../../../../types/verify";
+import { WalletAccount, ExactAvmPayload } from "../types";
 import { verify } from "./verify";
-import { isExactAvmPayload, ExactAvmPayload } from "../types";
-import type { Network } from "../../../../types/shared/network";
 
 /**
- * Settles an AVM (Algorand) exact scheme payment
+ * Decodes a base64-encoded signed transaction string into an Algorand transaction object
  *
- * @param signer - The AVM signer (used for verification)
- * @param paymentPayload - The payment payload to settle
- * @param paymentRequirements - The payment requirements
- * @returns A settlement response indicating success or failure
+ * @param encodedTxn - The base64-encoded signed transaction string
+ * @returns The decoded Algorand signed transaction
+ */
+function decodeSignedTransaction(encodedTxn: string): algosdk.SignedTransaction {
+  const txnBytes = Buffer.from(encodedTxn, "base64");
+  const decodedSignedTxn = algosdk.decodeSignedTransaction(txnBytes);
+  return decodedSignedTxn;
+}
+
+/**
+ * Decodes a base64-encoded unsigned transaction string into an Algorand transaction object
+ *
+ * @param encodedTxn - The base64-encoded unsigned transaction string
+ * @returns The decoded Algorand transaction
+ */
+function decodeTransaction(encodedTxn: string): algosdk.Transaction {
+  const txnBytes = Buffer.from(encodedTxn, "base64");
+  return algosdk.decodeUnsignedTransaction(txnBytes);
+}
+
+/**
+ * Settles a payment by executing an Algorand transaction according to the AVM exact specification
+ *
+ * Settlement steps:
+ * 1. Verify the payment payload is valid using the verify function
+ * 2. For transactions with a fee payer, sign the fee payer transaction
+ * 3. Submit the transaction group to the Algorand network
+ * 4. Return the transaction ID as proof of payment
+ *
+ * @param wallet - The facilitator wallet that will submit the transaction
+ * @param paymentPayload - The signed payment payload containing the transaction parameters
+ * @param paymentRequirements - The original payment details that were used to create the payload
+ * @returns A SettleResponse containing the transaction status and hash
  */
 export async function settle(
-  signer: AvmSigner,
+  wallet: WalletAccount,
   paymentPayload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
 ): Promise<SettleResponse> {
-  // First verify the payment
-  const verification = await verify(signer, paymentPayload, paymentRequirements);
-  if (!verification.isValid) {
-    return {
-      success: false,
-      errorReason: verification.invalidReason,
-      transaction: "",
-      network: paymentRequirements.network,
-      payer: verification.payer,
-    };
-  }
-
-  const rawPayload = paymentPayload.payload;
-  if (!isExactAvmPayload(rawPayload)) {
-    return {
-      success: false,
-      errorReason: "invalid_exact_avm_payload",
-      transaction: "",
-      network: paymentRequirements.network,
-      payer: verification.payer,
-    };
-  }
-
-  const avmPayload = rawPayload as ExactAvmPayload;
-  const { paymentGroup, paymentIndex } = avmPayload;
-
+  let payer = "unknown";
   try {
-    const algodClient = createAlgodClient(paymentRequirements.network as Network);
-
-    // Decode all signed transactions
-    const signedTxns = paymentGroup.map(encoded => decodeFromBase64(encoded));
-
-    // Combine transactions for submission
-    const combined = new Uint8Array(
-      signedTxns.reduce((acc, txn) => acc + txn.length, 0),
-    );
-    let offset = 0;
-    for (const txn of signedTxns) {
-      combined.set(txn, offset);
-      offset += txn.length;
+    const exactAvmPayload = paymentPayload.payload as ExactAvmPayload;
+    if (
+      !exactAvmPayload ||
+      !exactAvmPayload.paymentGroup ||
+      exactAvmPayload.paymentIndex >= exactAvmPayload.paymentGroup.length
+    ) {
+      return {
+        success: false,
+        errorReason: "invalid_exact_avm_payload_transaction",
+        transaction: "",
+        network: paymentPayload.network,
+        payer,
+      };
     }
 
-    // Submit transaction
-    const response = await algodClient.sendRawTransaction(combined).do();
-    const txId = response.txid;
+    // First verify the payload is valid
+    const validationResult = await verify(
+      { client: wallet.client, network: paymentPayload.network },
+      paymentPayload,
+      paymentRequirements,
+    );
 
-    // Wait for confirmation (Algorand has instant finality)
-    await algosdk.waitForConfirmation(algodClient, txId, 4);
+    if (!validationResult.isValid) {
+      console.error("Payment validation failed:", validationResult);
+      return {
+        success: false,
+        errorReason: validationResult.invalidReason,
+        transaction: "",
+        network: paymentPayload.network,
+        payer: validationResult.payer || payer,
+      };
+    }
 
-    // Get the payment transaction ID
-    const paymentTxnBytes = signedTxns[paymentIndex];
-    const paymentStxn = algosdk.decodeSignedTransaction(paymentTxnBytes);
-    const paymentTxId = paymentStxn.txn.txID();
+    // Extract payment transaction and determine payer
+    const signedPaymentTxn = decodeSignedTransaction(
+      exactAvmPayload.paymentGroup[exactAvmPayload.paymentIndex],
+    );
+    payer = signedPaymentTxn.txn.sender.toString();
 
+    // Prepare the transaction group for submission
+    const txnGroupBytes: Uint8Array[] = [];
+    const feePayer = (paymentRequirements.extra as { feePayer?: string } | undefined)?.feePayer;
+
+    // If there's a fee payer, identify and sign those transactions
+    if (feePayer) {
+      for (let i = 0; i < exactAvmPayload.paymentGroup.length; i++) {
+        const txnBase64 = exactAvmPayload.paymentGroup[i];
+
+        try {
+          // Try to decode as signed transaction
+          decodeSignedTransaction(txnBase64);
+          txnGroupBytes.push(Buffer.from(txnBase64, "base64"));
+        } catch {
+          // If not signed, it might be a fee payer transaction that needs signing
+          const unsignedTxn = decodeTransaction(txnBase64);
+
+          if (unsignedTxn.sender.toString() === feePayer) {
+            // This is a facilitator transaction that needs signing
+            const signedFeePayerTxn = await wallet.signTransactions([unsignedTxn.toByte()]);
+
+            if (!signedFeePayerTxn[0]) {
+              console.error("Fee payer transaction signing failed");
+              return {
+                success: false,
+                errorReason: "settle_exact_avm_transaction_failed",
+                transaction: "",
+                network: paymentPayload.network,
+                payer,
+              };
+            }
+
+            txnGroupBytes.push(signedFeePayerTxn[0]);
+          } else {
+            // Unexpected unsigned transaction
+            console.error("Unexpected unsigned transaction in group");
+            return {
+              success: false,
+              errorReason: "invalid_exact_avm_payload_transaction",
+              transaction: "",
+              network: paymentPayload.network,
+              payer,
+            };
+          }
+        }
+      }
+    } else {
+      // No fee payer, just use the signed user transaction
+      txnGroupBytes.push(
+        Buffer.from(exactAvmPayload.paymentGroup[exactAvmPayload.paymentIndex], "base64"),
+      );
+    }
+
+    // Submit the transaction group to the Algorand network
+    const result = await wallet.client.sendRawTransaction(txnGroupBytes).do();
+
+    // Return the transaction ID as proof of payment
     return {
       success: true,
-      transaction: paymentTxId,
-      network: paymentRequirements.network,
-      payer: verification.payer,
+      transaction: result.txid,
+      network: paymentPayload.network,
+      payer,
     };
-  } catch {
+  } catch (error) {
+    console.error("Error during settlement:", error);
     return {
       success: false,
       errorReason: "settle_exact_avm_transaction_failed",
       transaction: "",
-      network: paymentRequirements.network,
-      payer: verification.payer,
+      network: paymentPayload.network,
+      payer,
     };
   }
 }
