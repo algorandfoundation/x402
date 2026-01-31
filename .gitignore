@@ -12,6 +12,4 @@ e2e/facilitators/external-proxies/*
 typescript/package-lock.json
 .vscode/
 .idea/
-.claude/
 .venv/
-cloudflare/

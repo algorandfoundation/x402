@@ -45,6 +45,9 @@ svm = [
     "solders>=0.27.0",
     "solana>=0.36.0",
 ]
+avm = [
+    "py-algorand-sdk>=2.0.0",
+]
 
 # Extensions - optional functionality
 extensions = ["jsonschema>=4.0.0"]
@@ -52,8 +55,8 @@ extensions = ["jsonschema>=4.0.0"]
 # Convenience bundles
 clients = ["x402[httpx,requests]"]
 servers = ["x402[flask,fastapi]"]
-mechanisms = ["x402[evm,svm]"]
-all = ["x402[httpx,requests,flask,fastapi,evm,svm,extensions]"]
+mechanisms = ["x402[evm,svm,avm]"]
+all = ["x402[httpx,requests,flask,fastapi,evm,svm,avm,extensions]"]
 
 [dependency-groups]
 dev = [
@@ -78,6 +81,8 @@ dev = [
     # SVM dependencies
     "solders>=0.27.0",
     "solana>=0.36.0",
+    # AVM dependencies
+    "py-algorand-sdk>=2.0.0",
     # Extensions dependencies
     "jsonschema>=4.0.0",
 ]

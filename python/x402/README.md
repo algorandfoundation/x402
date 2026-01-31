@@ -15,9 +15,10 @@ uv add x402[requests]   # requests client
 uv add x402[fastapi]    # FastAPI middleware
 uv add x402[flask]      # Flask middleware
 
-# Blockchain mechanisms (pick one or both)
+# Blockchain mechanisms (pick one or more)
 uv add x402[evm]        # EVM/Ethereum
 uv add x402[svm]        # Solana
+uv add x402[avm]        # Algorand
 
 # Multiple extras
 uv add x402[fastapi,httpx,evm]
@@ -256,6 +257,7 @@ client.register("eip155:8453", CustomScheme())
 - `x402.http` - HTTP clients, middleware, and facilitator client
 - `x402.mechanisms.evm` - EVM/Ethereum implementation
 - `x402.mechanisms.svm` - Solana implementation
+- `x402.mechanisms.avm` - Algorand implementation
 - `x402.extensions` - Protocol extensions (Bazaar discovery)
 
 ## Examples
