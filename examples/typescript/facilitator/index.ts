@@ -1,5 +1,3 @@
-import { base58 } from "@scure/base";
-import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { x402Facilitator } from "@x402/core/facilitator";
 import {
   PaymentPayload,
@@ -7,94 +5,24 @@ import {
   SettleResponse,
   VerifyResponse,
 } from "@x402/core/types";
-import { toFacilitatorEvmSigner } from "@x402/evm";
-import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
-import { toFacilitatorSvmSigner } from "@x402/svm";
-import { registerExactSvmScheme } from "@x402/svm/exact/facilitator";
 import dotenv from "dotenv";
 import express from "express";
-import { createWalletClient, http, publicActions } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { baseSepolia } from "viem/chains";
 
 dotenv.config();
 
 // Configuration
 const PORT = process.env.PORT || "4022";
 
-// Validate required environment variables
-if (!process.env.EVM_PRIVATE_KEY) {
-  console.error("❌ EVM_PRIVATE_KEY environment variable is required");
+// Track which networks are enabled
+const enabledNetworks: string[] = [];
+
+// Validate at least one network is configured
+if (!process.env.EVM_PRIVATE_KEY && !process.env.SVM_PRIVATE_KEY && !process.env.AVM_MNEMONIC) {
+  console.error("❌ At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_MNEMONIC must be set");
   process.exit(1);
 }
 
-if (!process.env.SVM_PRIVATE_KEY) {
-  console.error("❌ SVM_PRIVATE_KEY environment variable is required");
-  process.exit(1);
-}
-
-// Initialize the EVM account from private key
-const evmAccount = privateKeyToAccount(
-  process.env.EVM_PRIVATE_KEY as `0x${string}`,
-);
-console.info(`EVM Facilitator account: ${evmAccount.address}`);
-
-// Initialize the SVM account from private key
-const svmAccount = await createKeyPairSignerFromBytes(
-  base58.decode(process.env.SVM_PRIVATE_KEY as string),
-);
-console.info(`SVM Facilitator account: ${svmAccount.address}`);
-
-// Create a Viem client with both wallet and public capabilities
-const viemClient = createWalletClient({
-  account: evmAccount,
-  chain: baseSepolia,
-  transport: http(),
-}).extend(publicActions);
-
-// Initialize the x402 Facilitator with EVM and SVM support
-
-const evmSigner = toFacilitatorEvmSigner({
-  getCode: (args: { address: `0x${string}` }) => viemClient.getCode(args),
-  address: evmAccount.address,
-  readContract: (args: {
-    address: `0x${string}`;
-    abi: readonly unknown[];
-    functionName: string;
-    args?: readonly unknown[];
-  }) =>
-    viemClient.readContract({
-      ...args,
-      args: args.args || [],
-    }),
-  verifyTypedData: (args: {
-    address: `0x${string}`;
-    domain: Record<string, unknown>;
-    types: Record<string, unknown>;
-    primaryType: string;
-    message: Record<string, unknown>;
-    signature: `0x${string}`;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  }) => viemClient.verifyTypedData(args as any),
-  writeContract: (args: {
-    address: `0x${string}`;
-    abi: readonly unknown[];
-    functionName: string;
-    args: readonly unknown[];
-  }) =>
-    viemClient.writeContract({
-      ...args,
-      args: args.args || [],
-    }),
-  sendTransaction: (args: { to: `0x${string}`; data: `0x${string}` }) =>
-    viemClient.sendTransaction(args),
-  waitForTransactionReceipt: (args: { hash: `0x${string}` }) =>
-    viemClient.waitForTransactionReceipt(args),
-});
-
-// Facilitator can now handle all Solana networks with automatic RPC creation
-const svmSigner = toFacilitatorSvmSigner(svmAccount);
-
+// Initialize the x402 Facilitator
 const facilitator = new x402Facilitator()
   .onBeforeVerify(async (context) => {
     console.log("Before verify", context);
@@ -115,16 +43,109 @@ const facilitator = new x402Facilitator()
     console.log("Settle failure", context);
   });
 
-// Register EVM and SVM schemes using the new register helpers
-registerExactEvmScheme(facilitator, {
-  signer: evmSigner,
-  networks: "eip155:84532", // Base Sepolia
-  deployERC4337WithEIP6492: true,
-});
-registerExactSvmScheme(facilitator, {
-  signer: svmSigner,
-  networks: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", // Devnet
-});
+// Conditionally initialize EVM support
+if (process.env.EVM_PRIVATE_KEY) {
+  const { toFacilitatorEvmSigner } = await import("@x402/evm");
+  const { registerExactEvmScheme } = await import("@x402/evm/exact/facilitator");
+  const { createWalletClient, http, publicActions } = await import("viem");
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const { baseSepolia } = await import("viem/chains");
+
+  const evmAccount = privateKeyToAccount(process.env.EVM_PRIVATE_KEY as `0x${string}`);
+  console.info(`EVM Facilitator account: ${evmAccount.address}`);
+
+  const viemClient = createWalletClient({
+    account: evmAccount,
+    chain: baseSepolia,
+    transport: http(),
+  }).extend(publicActions);
+
+  const evmSigner = toFacilitatorEvmSigner({
+    getCode: (args: { address: `0x${string}` }) => viemClient.getCode(args),
+    address: evmAccount.address,
+    readContract: (args: {
+      address: `0x${string}`;
+      abi: readonly unknown[];
+      functionName: string;
+      args?: readonly unknown[];
+    }) =>
+      viemClient.readContract({
+        ...args,
+        args: args.args || [],
+      }),
+    verifyTypedData: (args: {
+      address: `0x${string}`;
+      domain: Record<string, unknown>;
+      types: Record<string, unknown>;
+      primaryType: string;
+      message: Record<string, unknown>;
+      signature: `0x${string}`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) => viemClient.verifyTypedData(args as any),
+    writeContract: (args: {
+      address: `0x${string}`;
+      abi: readonly unknown[];
+      functionName: string;
+      args: readonly unknown[];
+    }) =>
+      viemClient.writeContract({
+        ...args,
+        args: args.args || [],
+      }),
+    sendTransaction: (args: { to: `0x${string}`; data: `0x${string}` }) =>
+      viemClient.sendTransaction(args),
+    waitForTransactionReceipt: (args: { hash: `0x${string}` }) =>
+      viemClient.waitForTransactionReceipt(args),
+  });
+
+  registerExactEvmScheme(facilitator, {
+    signer: evmSigner,
+    networks: "eip155:84532", // Base Sepolia
+    deployERC4337WithEIP6492: true,
+  });
+  enabledNetworks.push("EVM (Base Sepolia)");
+}
+
+// Conditionally initialize SVM support
+if (process.env.SVM_PRIVATE_KEY) {
+  const { base58 } = await import("@scure/base");
+  const { createKeyPairSignerFromBytes } = await import("@solana/kit");
+  const { toFacilitatorSvmSigner } = await import("@x402/svm");
+  const { registerExactSvmScheme } = await import("@x402/svm/exact/facilitator");
+
+  const svmAccount = await createKeyPairSignerFromBytes(
+    base58.decode(process.env.SVM_PRIVATE_KEY as string),
+  );
+  console.info(`SVM Facilitator account: ${svmAccount.address}`);
+
+  const svmSigner = toFacilitatorSvmSigner(svmAccount);
+
+  registerExactSvmScheme(facilitator, {
+    signer: svmSigner,
+    networks: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", // Devnet
+  });
+  enabledNetworks.push("SVM (Solana Devnet)");
+}
+
+// Conditionally initialize AVM (Algorand) support
+if (process.env.AVM_MNEMONIC) {
+  const algosdk = await import("algosdk");
+  const { toFacilitatorAvmSigner, ALGORAND_TESTNET_CAIP2 } = await import("@x402/avm");
+  const { registerExactAvmScheme } = await import("@x402/avm/exact/facilitator");
+
+  const avmAccount = algosdk.default.mnemonicToSecretKey(process.env.AVM_MNEMONIC as string);
+  console.info(`AVM Facilitator account: ${avmAccount.addr.toString()}`);
+
+  const avmSigner = toFacilitatorAvmSigner(avmAccount);
+
+  registerExactAvmScheme(facilitator, {
+    signer: avmSigner,
+    networks: ALGORAND_TESTNET_CAIP2, // Algorand Testnet
+  });
+  enabledNetworks.push("AVM (Algorand Testnet)");
+}
+
+console.info(`Enabled networks: ${enabledNetworks.join(", ")}`);
 
 // Initialize Express app
 const app = express();

@@ -22,7 +22,7 @@ console.log(response.data);
 - Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
 - pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
 - A running x402 server (see [express server example](../../servers/express))
-- Valid EVM and/or SVM private keys for making payments
+- Valid EVM and/or SVM private keys, and/or AVM mnemonic for making payments
 
 ## Setup
 
@@ -44,6 +44,7 @@ Required environment variables:
 
 - `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments
 - `SVM_PRIVATE_KEY` - Solana private key for SVM payments
+- `AVM_MNEMONIC` - Algorand 25-word mnemonic phrase for AVM payments
 
 3. Run the client:
 
