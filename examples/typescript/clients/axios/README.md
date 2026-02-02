@@ -1,15 +1,23 @@
 # @x402/axios Example Client
 
-Example client demonstrating how to use `@x402/axios` to make HTTP requests to endpoints protected by the x402 payment protocol.
+Example client demonstrating how to use `@x402/axios` to make HTTP requests to endpoints protected by the x402 payment protocol. Supports EVM (Ethereum), SVM (Solana), and AVM (Algorand) networks.
 
 ```typescript
 import { x402Client, wrapAxiosWithPayment } from "@x402/axios";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
+import { registerExactSvmScheme } from "@x402/svm/exact/client";
+import { registerExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
+import { createKeyPairSignerFromBytes } from "@solana/kit";
+import { toClientAvmSigner } from "@x402/avm";
+import { base58 } from "@scure/base";
+import algosdk from "algosdk";
 import axios from "axios";
 
 const client = new x402Client();
 registerExactEvmScheme(client, { signer: privateKeyToAccount(process.env.EVM_PRIVATE_KEY) });
+registerExactSvmScheme(client, { signer: await createKeyPairSignerFromBytes(base58.decode(process.env.SVM_PRIVATE_KEY)) });
+registerExactAvmScheme(client, { signer: toClientAvmSigner(algosdk.mnemonicToSecretKey(process.env.AVM_MNEMONIC)) });
 
 const api = wrapAxiosWithPayment(axios.create(), client);
 
@@ -40,11 +48,13 @@ cd clients/axios
 cp .env-local .env
 ```
 
-Required environment variables:
+Configure at least one of the following environment variables:
 
-- `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments
-- `SVM_PRIVATE_KEY` - Solana private key for SVM payments
-- `AVM_MNEMONIC` - Algorand 25-word mnemonic phrase for AVM payments
+- `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments (optional)
+- `SVM_PRIVATE_KEY` - Solana private key for SVM payments (optional)
+- `AVM_MNEMONIC` - Algorand 25-word mnemonic phrase for AVM payments (optional)
+
+Only networks with configured credentials will be registered.
 
 3. Run the client:
 

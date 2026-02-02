@@ -1,12 +1,15 @@
 # @x402/express Example Server
 
-Express.js server demonstrating how to protect API endpoints with a paywall using the `@x402/express` middleware.
+Express.js server demonstrating how to protect API endpoints with a paywall using the `@x402/express` middleware. Supports EVM (Ethereum), SVM (Solana), and AVM (Algorand) networks.
 
 ```typescript
 import express from "express";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { ExactSvmScheme } from "@x402/svm/exact/server";
+import { ExactAvmScheme } from "@x402/avm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 
 const app = express();
 
@@ -14,13 +17,19 @@ app.use(
   paymentMiddleware(
     {
       "GET /weather": {
-        accepts: { scheme: "exact", price: "$0.001", network: "eip155:84532", payTo: evmAddress },
+        accepts: [
+          { scheme: "exact", price: "$0.001", network: "eip155:84532", payTo: evmAddress },
+          { scheme: "exact", price: "$0.001", network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", payTo: svmAddress },
+          { scheme: "exact", price: "$0.001", network: ALGORAND_TESTNET_CAIP2, payTo: avmAddress },
+        ],
         description: "Weather data",
         mimeType: "application/json",
       },
     },
     new x402ResourceServer(new HTTPFacilitatorClient({ url: facilitatorUrl }))
-      .register("eip155:84532", new ExactEvmScheme()),
+      .register("eip155:84532", new ExactEvmScheme())
+      .register("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", new ExactSvmScheme())
+      .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme()),
   ),
 );
 
@@ -42,12 +51,14 @@ app.get("/weather", (req, res) => res.json({ weather: "sunny", temperature: 70 }
 cp .env-local .env
 ```
 
-and fill required environment variables:
+and fill the following environment variables:
 
-- `FACILITATOR_URL` - Facilitator endpoint URL
-- `EVM_ADDRESS` - Ethereum address to receive payments
-- `SVM_ADDRESS` - Solana address to receive payments
-- `AVM_ADDRESS` - Algorand address to receive payments
+- `FACILITATOR_URL` - Facilitator endpoint URL (required)
+- `EVM_ADDRESS` - Ethereum address to receive payments (optional)
+- `SVM_ADDRESS` - Solana address to receive payments (optional)
+- `AVM_ADDRESS` - Algorand address to receive payments (optional)
+
+At least one address must be configured. Only networks with configured addresses will be enabled.
 
 2. Install and build all packages from the typescript examples root:
 ```bash

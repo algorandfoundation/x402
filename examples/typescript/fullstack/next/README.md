@@ -17,12 +17,14 @@ Next.js application demonstrating how to protect routes with a paywall using the
 cp .env-local .env
 ```
 
-and fill required environment variables:
+and fill the following environment variables:
 
-- `FACILITATOR_URL` - Facilitator endpoint URL
-- `EVM_ADDRESS` - Ethereum address to receive payments
-- `SVM_ADDRESS` - Solana address to receive payments
-- `AVM_ADDRESS` - Algorand address to receive payments
+- `FACILITATOR_URL` - Facilitator endpoint URL (required)
+- `EVM_ADDRESS` - Ethereum address to receive payments (optional)
+- `SVM_ADDRESS` - Solana address to receive payments (optional)
+- `AVM_ADDRESS` - Algorand address to receive payments (optional)
+
+At least one address must be configured. Only networks with configured addresses will be enabled.
 
 2. Install and build all packages from the typescript examples root:
 ```bash
@@ -295,4 +297,4 @@ export const config = {
 - `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` — Solana Devnet
 - `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` — Solana Mainnet
 - `algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=` — Algorand Testnet
-- `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73k` — Algorand Mainnet
+- `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=` — Algorand Mainnet

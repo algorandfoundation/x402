@@ -1,9 +1,4 @@
-import { privateKeyToAccount } from "viem/accounts";
 import { x402Client, type PaymentRequirements } from "@x402/fetch";
-import { ExactEvmScheme } from "@x402/evm/exact/client";
-import { ExactSvmScheme } from "@x402/svm/exact/client";
-import { createKeyPairSignerFromBytes } from "@solana/kit";
-import { base58 } from "@scure/base";
 import { x402HTTPClient, wrapFetchWithPayment } from "@x402/fetch";
 
 /**
@@ -17,22 +12,22 @@ import { x402HTTPClient, wrapFetchWithPayment } from "@x402/fetch";
  * - Prefer specific networks or chains
  * - User preference settings in a wallet UI
  *
- * @param evmPrivateKey - The EVM private key for signing
- * @param svmPrivateKey - The SVM private key for signing
+ * @param evmPrivateKey - The EVM private key for signing (optional)
+ * @param svmPrivateKey - The SVM private key for signing (optional)
+ * @param avmMnemonic - The AVM mnemonic for signing (optional)
  * @param url - The URL to make the request to
  */
 export async function runPreferredNetworkExample(
-  evmPrivateKey: `0x${string}`,
-  svmPrivateKey: string,
+  evmPrivateKey: `0x${string}` | undefined,
+  svmPrivateKey: string | undefined,
+  avmMnemonic: string | undefined,
   url: string,
 ): Promise<void> {
   console.log("🎯 Creating client with preferred network selection...\n");
 
-  const evmSigner = privateKeyToAccount(evmPrivateKey);
-  const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
-
   // Define network preference order (most preferred first)
-  const networkPreferences = ["solana:", "eip155:"];
+  // Algorand is preferred, then Solana, then EVM
+  const networkPreferences = ["algorand:", "solana:", "eip155:"];
 
   /**
    * Custom selector that picks payment options based on preference order.
@@ -70,9 +65,44 @@ export async function runPreferredNetworkExample(
     return options[0];
   };
 
-  const client = new x402Client(preferredNetworkSelector)
-    .register("eip155:*", new ExactEvmScheme(evmSigner))
-    .register("solana:*", new ExactSvmScheme(svmSigner));
+  const client = new x402Client(preferredNetworkSelector);
+  const enabledNetworks: string[] = [];
+
+  // Conditionally add EVM support
+  if (evmPrivateKey) {
+    const { privateKeyToAccount } = await import("viem/accounts");
+    const { ExactEvmScheme } = await import("@x402/evm/exact/client");
+
+    const evmSigner = privateKeyToAccount(evmPrivateKey);
+    client.register("eip155:*", new ExactEvmScheme(evmSigner));
+    enabledNetworks.push("EVM (eip155:*)");
+  }
+
+  // Conditionally add SVM support
+  if (svmPrivateKey) {
+    const { ExactSvmScheme } = await import("@x402/svm/exact/client");
+    const { createKeyPairSignerFromBytes } = await import("@solana/kit");
+    const { base58 } = await import("@scure/base");
+
+    const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
+    client.register("solana:*", new ExactSvmScheme(svmSigner));
+    enabledNetworks.push("SVM (solana:*)");
+  }
+
+  // Conditionally add AVM (Algorand) support
+  if (avmMnemonic) {
+    const algosdk = await import("algosdk");
+    const { ExactAvmScheme } = await import("@x402/avm/exact/client");
+    const { toClientAvmSigner } = await import("@x402/avm");
+
+    const avmAccount = algosdk.default.mnemonicToSecretKey(avmMnemonic);
+    const avmSigner = toClientAvmSigner(avmAccount);
+    client.register("algorand:*", new ExactAvmScheme(avmSigner));
+    enabledNetworks.push("AVM (algorand:*)");
+  }
+
+  console.log(`Enabled networks: ${enabledNetworks.join(", ")}`);
+  console.log(`Network preference order: ${networkPreferences.join(" > ")}\n`);
 
   const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 
