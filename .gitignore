@@ -14,3 +14,4 @@ typescript/package-lock.json
 .idea/
 .claude/
 .venv/
+cloudflare/

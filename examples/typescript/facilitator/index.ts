@@ -129,11 +129,11 @@ if (process.env.SVM_PRIVATE_KEY) {
 
 // Conditionally initialize AVM (Algorand) support
 if (process.env.AVM_MNEMONIC) {
-  const algosdk = await import("algosdk");
-  const { toFacilitatorAvmSigner, ALGORAND_TESTNET_CAIP2 } = await import("@x402/avm");
+  const { toFacilitatorAvmSigner, ALGORAND_TESTNET_CAIP2, mnemonicToAlgorandAccount } = await import("@x402/avm");
   const { registerExactAvmScheme } = await import("@x402/avm/exact/facilitator");
 
-  const avmAccount = algosdk.default.mnemonicToSecretKey(process.env.AVM_MNEMONIC as string);
+  // Supports both 24-word BIP-39 and 25-word Algorand native mnemonics
+  const avmAccount = mnemonicToAlgorandAccount(process.env.AVM_MNEMONIC as string);
   console.info(`AVM Facilitator account: ${avmAccount.addr.toString()}`);
 
   const avmSigner = toFacilitatorAvmSigner(avmAccount);

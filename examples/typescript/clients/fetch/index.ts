@@ -25,7 +25,7 @@ if (!evmPrivateKey && !svmPrivateKey && !avmMnemonic) {
  * Environment variables (at least one required):
  * - EVM_PRIVATE_KEY: The private key of the EVM signer
  * - SVM_PRIVATE_KEY: The private key of the SVM signer
- * - AVM_MNEMONIC: The 25-word mnemonic phrase for the Algorand signer
+ * - AVM_MNEMONIC: Algorand mnemonic (24-word BIP-39 or 25-word Algorand native)
  */
 async function main(): Promise<void> {
   const client = new x402Client();
@@ -57,10 +57,10 @@ async function main(): Promise<void> {
   // Conditionally register AVM (Algorand) support
   if (avmMnemonic) {
     const { registerExactAvmScheme } = await import("@x402/avm/exact/client");
-    const { toClientAvmSigner } = await import("@x402/avm");
-    const algosdk = await import("algosdk");
+    const { toClientAvmSigner, mnemonicToAlgorandAccount } = await import("@x402/avm");
 
-    const avmAccount = algosdk.default.mnemonicToSecretKey(avmMnemonic);
+    // Supports both 24-word BIP-39 and 25-word Algorand native mnemonics
+    const avmAccount = mnemonicToAlgorandAccount(avmMnemonic);
     const avmSigner = toClientAvmSigner(avmAccount);
     registerExactAvmScheme(client, { signer: avmSigner });
     enabledNetworks.push("AVM");

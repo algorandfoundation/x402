@@ -87,3 +87,14 @@ export {
   getTransactionId,
   hasSignature,
 } from "./utils";
+
+// Mnemonic Utilities (BIP-39 and Algorand native support)
+export {
+  mnemonicToAlgorandAccount,
+  deriveAlgorandFromBip39,
+  detectMnemonicType,
+  isValidMnemonic,
+  getMnemonicWordCount,
+  ALGORAND_DERIVATION_PATH,
+} from "./mnemonic";
+export type { MnemonicType } from "./mnemonic";

@@ -130,11 +130,11 @@ async function main(): Promise<void> {
 
   // Conditionally add AVM (Algorand) support
   if (avmMnemonic) {
-    const algosdk = await import("algosdk");
     const { ExactAvmScheme } = await import("@x402/avm/exact/client");
-    const { toClientAvmSigner } = await import("@x402/avm");
+    const { toClientAvmSigner, mnemonicToAlgorandAccount } = await import("@x402/avm");
 
-    const avmAccount = algosdk.default.mnemonicToSecretKey(avmMnemonic);
+    // Supports both 24-word BIP-39 and 25-word Algorand native mnemonics
+    const avmAccount = mnemonicToAlgorandAccount(avmMnemonic);
     const avmSigner = toClientAvmSigner(avmAccount);
     client.register("algorand:*", new ExactAvmScheme(avmSigner));
     enabledNetworks.push("AVM (algorand:*)");

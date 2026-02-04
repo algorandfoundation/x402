@@ -8,12 +8,11 @@ import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
-import { toClientAvmSigner } from "@x402/avm";
-import algosdk from "algosdk";
+import { toClientAvmSigner, mnemonicToAlgorandAccount } from "@x402/avm";
 
 const client = new x402Client()
   .register("eip155:*", new ExactEvmScheme(privateKeyToAccount(evmPrivateKey)))
-  .register("algorand:*", new ExactAvmScheme(toClientAvmSigner(algosdk.mnemonicToSecretKey(avmMnemonic))));
+  .register("algorand:*", new ExactAvmScheme(toClientAvmSigner(mnemonicToAlgorandAccount(avmMnemonic))));
 
 // 1. Make initial request
 let response = await fetch(url);
@@ -39,7 +38,7 @@ console.log(await response.json());
 - Valid credentials for at least one network:
   - EVM: Private key (hex string starting with 0x)
   - SVM: Private key (base58 encoded)
-  - AVM: 25-word Algorand mnemonic phrase
+  - AVM: Algorand mnemonic phrase (supports both 24-word BIP-39 and 25-word Algorand native mnemonics)
 - A running x402 server (see [server examples](../../servers/))
 
 ## Setup
@@ -54,7 +53,7 @@ and configure at least one of the following environment variables:
 
 - `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments (optional)
 - `SVM_PRIVATE_KEY` - Solana private key for SVM payments (optional)
-- `AVM_MNEMONIC` - 25-word Algorand mnemonic for AVM payments (optional)
+- `AVM_MNEMONIC` - Algorand mnemonic for AVM payments (supports both 24-word BIP-39 and 25-word native) (optional)
 
 Only networks with configured credentials will be registered.
 
@@ -134,9 +133,8 @@ if (svmPrivateKey) {
 // Conditionally add AVM (Algorand) support
 if (avmMnemonic) {
   const { ExactAvmScheme } = await import("@x402/avm/exact/client");
-  const { toClientAvmSigner } = await import("@x402/avm");
-  const algosdk = await import("algosdk");
-  const avmSigner = toClientAvmSigner(algosdk.default.mnemonicToSecretKey(avmMnemonic));
+  const { toClientAvmSigner, mnemonicToAlgorandAccount } = await import("@x402/avm");
+  const avmSigner = toClientAvmSigner(mnemonicToAlgorandAccount(avmMnemonic));
   client.register("algorand:*", new ExactAvmScheme(avmSigner));
 }
 ```

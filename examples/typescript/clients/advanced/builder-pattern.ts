@@ -60,11 +60,11 @@ export async function runBuilderPatternExample(
 
   // Conditionally add AVM (Algorand) support
   if (avmMnemonic) {
-    const algosdk = await import("algosdk");
     const { ExactAvmScheme } = await import("@x402/avm/exact/client");
-    const { toClientAvmSigner, ALGORAND_TESTNET_CAIP2 } = await import("@x402/avm");
+    const { toClientAvmSigner, mnemonicToAlgorandAccount, ALGORAND_TESTNET_CAIP2 } = await import("@x402/avm");
 
-    const avmAccount = algosdk.default.mnemonicToSecretKey(avmMnemonic);
+    // Supports both 24-word BIP-39 and 25-word Algorand native mnemonics
+    const avmAccount = mnemonicToAlgorandAccount(avmMnemonic);
     const avmSigner = toClientAvmSigner(avmAccount);
     const algorandTestnetSigner = avmSigner; // Could be a different signer for testnet
 

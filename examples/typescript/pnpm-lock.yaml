@@ -1045,6 +1045,15 @@ importers:
 
   ../../typescript/packages/mechanisms/avm:
     dependencies:
+      '@noble/curves':
+        specifier: ^1.8.1
+        version: 1.9.7
+      '@scure/bip32':
+        specifier: ^1.6.2
+        version: 1.7.0
+      '@scure/bip39':
+        specifier: ^1.5.4
+        version: 1.6.0
       '@x402/core':
         specifier: workspace:^
         version: link:../../core
@@ -1298,9 +1307,6 @@ importers:
       '@x402/svm':
         specifier: workspace:*
         version: link:../../../../typescript/packages/mechanisms/svm
-      algosdk:
-        specifier: ^3.5.0
-        version: 3.5.2
       axios:
         specifier: ^1.13.2
         version: 1.13.2
@@ -1417,9 +1423,6 @@ importers:
       '@x402/svm':
         specifier: workspace:*
         version: link:../../../../typescript/packages/mechanisms/svm
-      algosdk:
-        specifier: ^3.5.0
-        version: 3.5.2
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -1469,6 +1472,9 @@ importers:
       '@solana/kit':
         specifier: ^2.1.1
         version: 2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.2)(ws@8.18.3(bufferutil@4.0.9)(utf-8-validate@5.0.10))
+      '@x402/avm':
+        specifier: workspace:*
+        version: link:../../../../typescript/packages/mechanisms/avm
       '@x402/axios':
         specifier: workspace:*
         version: link:../../../../typescript/packages/http/axios
@@ -1542,9 +1548,6 @@ importers:
       '@x402/svm':
         specifier: workspace:*
         version: link:../../../typescript/packages/mechanisms/svm
-      algosdk:
-        specifier: ^3.5.0
-        version: 3.5.2
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
@@ -9344,7 +9347,7 @@ packages:
   glob@8.1.0:
     resolution: {integrity: sha512-r8hpEjiQEYlF2QU0df3dS+nxxSIreXQS1qRhMJM0Q5NDdR386C7jb7Hwwod8Fgiuex+k0GFjgft18yvxm5XoCQ==}
     engines: {node: '>=12'}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   global-agent@3.0.0:
     resolution: {integrity: sha512-PT6XReJ+D07JvGoxQMkT6qji/jVNfX/h364XHZOWeRzy64sSFr+xJ5OX7LI3b4MPQzdL4H8Y8M0xzPpsVMwA8Q==}

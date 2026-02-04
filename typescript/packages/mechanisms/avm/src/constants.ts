@@ -128,19 +128,46 @@ export const USDC_CONFIG: Record<string, { asaId: string; name: string; decimals
 // ============================================================================
 
 /**
- * Default Algod API endpoint for Algorand Mainnet (AlgoNode)
+ * Fallback Algod API endpoint for Algorand Mainnet (AlgoNode)
+ * Used when ALGOD_MAINNET_URL environment variable is not set.
  * @see https://algonode.io/
  */
-export const DEFAULT_ALGOD_MAINNET = "https://mainnet-api.algonode.cloud";
+export const FALLBACK_ALGOD_MAINNET = "https://mainnet-api.algonode.cloud";
 
 /**
- * Default Algod API endpoint for Algorand Testnet (AlgoNode)
+ * Fallback Algod API endpoint for Algorand Testnet (AlgoNode)
+ * Used when ALGOD_TESTNET_URL environment variable is not set.
  * @see https://algonode.io/
  */
-export const DEFAULT_ALGOD_TESTNET = "https://testnet-api.algonode.cloud";
+export const FALLBACK_ALGOD_TESTNET = "https://testnet-api.algonode.cloud";
 
 /**
- * Mapping from network identifiers to Algod endpoints
+ * Get the Algod API endpoint for Algorand Mainnet.
+ * Checks ALGOD_MAINNET_URL environment variable first, falls back to AlgoNode.
+ *
+ * Set the environment variable to use a custom endpoint:
+ * ```
+ * ALGOD_MAINNET_URL=https://your-node.example.com
+ * ```
+ */
+export const DEFAULT_ALGOD_MAINNET =
+  (typeof process !== "undefined" && process.env?.ALGOD_MAINNET_URL) || FALLBACK_ALGOD_MAINNET;
+
+/**
+ * Get the Algod API endpoint for Algorand Testnet.
+ * Checks ALGOD_TESTNET_URL environment variable first, falls back to AlgoNode.
+ *
+ * Set the environment variable to use a custom endpoint:
+ * ```
+ * ALGOD_TESTNET_URL=https://your-node.example.com
+ * ```
+ */
+export const DEFAULT_ALGOD_TESTNET =
+  (typeof process !== "undefined" && process.env?.ALGOD_TESTNET_URL) || FALLBACK_ALGOD_TESTNET;
+
+/**
+ * Mapping from network identifiers to Algod endpoints.
+ * Endpoints are determined by environment variables if set, otherwise uses fallback (AlgoNode).
  */
 export const NETWORK_TO_ALGOD: Record<string, string> = {
   [ALGORAND_MAINNET_CAIP2]: DEFAULT_ALGOD_MAINNET,

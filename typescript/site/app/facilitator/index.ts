@@ -8,10 +8,9 @@ import { ExactEvmSchemeV1 } from "@x402/evm/exact/v1/facilitator";
 import { toFacilitatorSvmSigner } from "@x402/svm";
 import { ExactSvmScheme } from "@x402/svm/exact/facilitator";
 import { ExactSvmSchemeV1 } from "@x402/svm/exact/v1/facilitator";
-import { toFacilitatorAvmSigner, ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
+import { toFacilitatorAvmSigner, ALGORAND_TESTNET_CAIP2, mnemonicToAlgorandAccount } from "@x402/avm";
 import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
 import { ExactAvmSchemeV1 } from "@x402/avm/exact/v1/facilitator";
-import algosdk from "algosdk";
 import { createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
@@ -120,16 +119,17 @@ async function createFacilitator(): Promise<x402Facilitator> {
   }
 
   // Add AVM (Algorand) support if mnemonic is available
+  // Supports both 24-word BIP-39 and 25-word Algorand native mnemonics
   if (avmMnemonic) {
     try {
-      const avmAccount = algosdk.mnemonicToSecretKey(avmMnemonic);
+      const avmAccount = mnemonicToAlgorandAccount(avmMnemonic);
       const avmSigner = toFacilitatorAvmSigner(avmAccount);
 
       facilitator = facilitator
         .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme(avmSigner))
         .registerV1("algorand-testnet" as Network, new ExactAvmSchemeV1(avmSigner));
 
-      console.log(`✅ AVM (Algorand) facilitator initialized for address: ${avmAccount.addr}`);
+      console.log(`✅ AVM (Algorand) facilitator initialized for address: ${avmAccount.addr.toString()}`);
     } catch (error) {
       console.warn(
         `⚠️ Failed to initialize AVM facilitator: ${error instanceof Error ? error.message : "Unknown error"}`,

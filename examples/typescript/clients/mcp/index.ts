@@ -54,9 +54,9 @@ async function createClient() {
   // Conditionally register AVM scheme
   if (avmMnemonic) {
     const { registerExactAvmScheme } = await import("@x402/avm/exact/client");
-    const { toClientAvmSigner } = await import("@x402/avm");
-    const algosdk = await import("algosdk");
-    const avmAccount = algosdk.default.mnemonicToSecretKey(avmMnemonic);
+    const { toClientAvmSigner, mnemonicToAlgorandAccount } = await import("@x402/avm");
+    // Supports both 24-word BIP-39 and 25-word Algorand native mnemonics
+    const avmAccount = mnemonicToAlgorandAccount(avmMnemonic);
     const avmSigner = toClientAvmSigner(avmAccount);
     registerExactAvmScheme(client, { signer: avmSigner });
     enabledNetworks.push("AVM");

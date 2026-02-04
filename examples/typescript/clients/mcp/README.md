@@ -10,7 +10,7 @@ This is an example client that demonstrates how to use the x402 payment protocol
 - Valid credentials for at least one network:
   - EVM: Private key (hex string starting with 0x)
   - SVM: Private key (base58 encoded)
-  - AVM: 25-word Algorand mnemonic phrase
+  - AVM: Algorand mnemonic phrase (supports both 24-word BIP-39 and 25-word Algorand native mnemonics)
 - Claude Desktop with MCP support
 
 ## Setup
@@ -38,7 +38,7 @@ cd clients/mcp
       "env": {
         "EVM_PRIVATE_KEY": "<private key of a wallet with USDC on Base Sepolia>",
         "SVM_PRIVATE_KEY": "<base58-encoded private key of a Solana wallet with USDC on Devnet>",
-        "AVM_MNEMONIC": "<25-word Algorand mnemonic for a wallet with USDC on Testnet>",
+        "AVM_MNEMONIC": "<Algorand mnemonic (24-word BIP-39 or 25-word native) for a wallet with USDC on Testnet>",
         "RESOURCE_SERVER_URL": "http://localhost:4021",
         "ENDPOINT_PATH": "/weather"
       }
@@ -95,9 +95,8 @@ if (SVM_PRIVATE_KEY) {
 // Conditionally register AVM scheme
 if (AVM_MNEMONIC) {
   const { registerExactAvmScheme } = await import("@x402/avm/exact/client");
-  const { toClientAvmSigner } = await import("@x402/avm");
-  const algosdk = await import("algosdk");
-  const avmAccount = algosdk.default.mnemonicToSecretKey(AVM_MNEMONIC);
+  const { toClientAvmSigner, mnemonicToAlgorandAccount } = await import("@x402/avm");
+  const avmAccount = mnemonicToAlgorandAccount(AVM_MNEMONIC);
   const avmSigner = toClientAvmSigner(avmAccount);
   registerExactAvmScheme(client, { signer: avmSigner });
 }
