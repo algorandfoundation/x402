@@ -67,6 +67,16 @@ def _load_svm_template() -> str | None:
         return None
 
 
+def _load_avm_template() -> str | None:
+    """Load AVM paywall template if available."""
+    try:
+        from .avm_paywall_template import AVM_PAYWALL_TEMPLATE
+
+        return AVM_PAYWALL_TEMPLATE
+    except ImportError:
+        return None
+
+
 # ============================================================================
 # Paywall Network Handler Protocol
 # ============================================================================
@@ -273,11 +283,89 @@ class SvmPaywallHandler:
 
 
 # ============================================================================
+# AVM Paywall Handler
+# ============================================================================
+
+
+@dataclass
+class AvmPaywallHandler:
+    """AVM (Algorand) network paywall handler."""
+
+    def supports(self, requirement: dict) -> bool:
+        """Check if requirement is for an Algorand network."""
+        network = requirement.get("network", "")
+        return network.startswith("algorand:")
+
+    def generate_html(
+        self,
+        requirement: dict,
+        payment_required: PaymentRequired,
+        config: PaywallConfig | None = None,
+    ) -> str:
+        """Generate AVM paywall HTML."""
+        template = _load_avm_template()
+
+        if not template:
+            return self._fallback_html(payment_required, config)
+
+        # Extract config values
+        app_name = config.app_name if config else ""
+        app_logo = config.app_logo if config else ""
+        testnet = config.testnet if config else True
+        current_url = config.current_url if config else ""
+
+        amount = _get_display_amount(payment_required)
+        payment_required_json = payment_required.model_dump(by_alias=True, exclude_none=True)
+
+        x402_config = {
+            "amount": amount,
+            "paymentRequired": payment_required_json,
+            "testnet": testnet,
+            "currentUrl": current_url,
+            "appName": app_name,
+            "appLogo": app_logo,
+        }
+        config_script = f"""
+  <script>
+    window.x402 = {htmlsafe_json_dumps(x402_config)};
+  </script>"""
+
+        return template.replace("</head>", f"{config_script}\n</head>")
+
+    def _fallback_html(
+        self,
+        payment_required: PaymentRequired,
+        config: PaywallConfig | None = None,
+    ) -> str:
+        """Generate fallback HTML when template not available."""
+        amount = _get_display_amount(payment_required)
+        app_name = config.app_name if config else ""
+        title = f"{html.escape(app_name)} - Payment Required" if app_name else "Payment Required"
+
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>{title}</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="max-width: 600px; margin: 50px auto; padding: 20px; font-family: system-ui;">
+    <h1>{title}</h1>
+    <p><strong>Amount:</strong> ${amount:.2f} USDC</p>
+    <p style="padding: 1rem; background: #fef3c7;">
+        AVM Paywall template not found. Connect your Algorand wallet to proceed with payment.
+    </p>
+</body>
+</html>"""
+
+
+# ============================================================================
 # Pre-configured handlers
 # ============================================================================
 
 evm_paywall = EvmPaywallHandler()
 svm_paywall = SvmPaywallHandler()
+avm_paywall = AvmPaywallHandler()
 
 
 # ============================================================================
@@ -434,6 +522,8 @@ __all__ = [
     "PaywallNetworkHandler",
     "EvmPaywallHandler",
     "SvmPaywallHandler",
+    "AvmPaywallHandler",
     "evm_paywall",
     "svm_paywall",
+    "avm_paywall",
 ]

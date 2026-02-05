@@ -236,7 +236,9 @@ def decode_transaction_bytes(txn_bytes: bytes) -> DecodedTransactionInfo:
     _check_algosdk()
 
     try:
-        decoded = encoding.msgpack_decode(txn_bytes)
+        # Note: msgpack_decode expects a base64 string, so encode the raw bytes
+        b64_encoded = base64.b64encode(txn_bytes).decode("utf-8")
+        decoded = encoding.msgpack_decode(b64_encoded)
     except Exception as e:
         raise ValueError(f"Failed to decode transaction: {e}") from e
 

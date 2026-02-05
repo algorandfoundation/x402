@@ -111,14 +111,27 @@ class AlgorandSigner:
                 continue
 
             # Decode the unsigned transaction
-            txn_dict = encoding.msgpack_decode(unsigned_txns[idx])
-            txn = transaction.Transaction.undictify(txn_dict)
+            # Note: msgpack_decode expects base64 string, so convert bytes to b64
+            import base64
+
+            b64_input = base64.b64encode(unsigned_txns[idx]).decode("utf-8")
+            decoded = encoding.msgpack_decode(b64_input)
+
+            # Handle both dict and Transaction object returns from msgpack_decode
+            if isinstance(decoded, transaction.Transaction):
+                txn = decoded
+            elif isinstance(decoded, dict):
+                txn = transaction.Transaction.undictify(decoded)
+            else:
+                raise TypeError(f"Unexpected decoded type: {type(decoded)}")
 
             # Sign it
             signed_txn = txn.sign(self._private_key)
 
             # Encode the signed transaction
-            results[idx] = encoding.msgpack_encode(signed_txn)
+            # Note: msgpack_encode returns a base64 string, convert to bytes
+            encoded = encoding.msgpack_encode(signed_txn)
+            results[idx] = base64.b64decode(encoded)
 
         return results
 
@@ -217,18 +230,29 @@ class FacilitatorAlgorandSigner:
         network: str,
     ) -> bytes:
         """Sign a single transaction with the fee payer's key."""
+        import base64
+
         _ = network  # Unused, network validated elsewhere
         private_key = self._get_private_key(fee_payer)
 
-        # Decode the unsigned transaction
-        txn_dict = encoding.msgpack_decode(txn_bytes)
-        txn = transaction.Transaction.undictify(txn_dict)
+        # Decode the unsigned transaction (convert bytes to b64 for msgpack_decode)
+        b64_input = base64.b64encode(txn_bytes).decode("utf-8")
+        decoded = encoding.msgpack_decode(b64_input)
+
+        # Handle both dict and Transaction object
+        if isinstance(decoded, transaction.Transaction):
+            txn = decoded
+        elif isinstance(decoded, dict):
+            txn = transaction.Transaction.undictify(decoded)
+        else:
+            raise TypeError(f"Unexpected decoded type: {type(decoded)}")
 
         # Sign it
         signed_txn = txn.sign(private_key)
 
-        # Encode the signed transaction
-        return encoding.msgpack_encode(signed_txn)
+        # Encode the signed transaction (convert b64 string to bytes)
+        encoded = encoding.msgpack_encode(signed_txn)
+        return base64.b64decode(encoded)
 
     def sign_group(
         self,
@@ -238,6 +262,8 @@ class FacilitatorAlgorandSigner:
         network: str,
     ) -> list[bytes]:
         """Sign specified transactions in a group with the fee payer's key."""
+        import base64
+
         _ = network  # Unused, network validated elsewhere
         private_key = self._get_private_key(fee_payer)
 
@@ -247,23 +273,32 @@ class FacilitatorAlgorandSigner:
             if idx >= len(group_bytes):
                 continue
 
-            # Decode the unsigned transaction
-            decoded = encoding.msgpack_decode(group_bytes[idx])
+            # Decode the unsigned transaction (convert bytes to b64 for msgpack_decode)
+            b64_input = base64.b64encode(group_bytes[idx]).decode("utf-8")
+            decoded = encoding.msgpack_decode(b64_input)
 
-            # Check if it's already a signed transaction
-            if isinstance(decoded, dict) and "txn" in decoded:
-                # Already signed, extract the inner transaction
-                txn_dict = decoded["txn"]
+            # Handle Transaction object or dict
+            if isinstance(decoded, transaction.Transaction):
+                txn = decoded
+            elif isinstance(decoded, transaction.SignedTransaction):
+                # Already signed, get the inner transaction
+                txn = decoded.transaction
+            elif isinstance(decoded, dict):
+                # Check if it's already a signed transaction dict
+                if "txn" in decoded:
+                    # Already signed, extract the inner transaction
+                    txn = transaction.Transaction.undictify(decoded["txn"])
+                else:
+                    txn = transaction.Transaction.undictify(decoded)
             else:
-                txn_dict = decoded
-
-            txn = transaction.Transaction.undictify(txn_dict)
+                raise TypeError(f"Unexpected decoded type: {type(decoded)}")
 
             # Sign it
             signed_txn = txn.sign(private_key)
 
-            # Encode the signed transaction
-            results[idx] = encoding.msgpack_encode(signed_txn)
+            # Encode the signed transaction (convert b64 string to bytes)
+            encoded = encoding.msgpack_encode(signed_txn)
+            results[idx] = base64.b64decode(encoded)
 
         return results
 
@@ -273,14 +308,23 @@ class FacilitatorAlgorandSigner:
         network: str,
     ) -> None:
         """Simulate a transaction group."""
+        import base64
+
         client = self._get_client(network)
 
         # Decode all transactions in the group
         signed_txns = []
         for txn_bytes in group_bytes:
-            decoded = encoding.msgpack_decode(txn_bytes)
+            # Convert bytes to b64 for msgpack_decode
+            b64_input = base64.b64encode(txn_bytes).decode("utf-8")
+            decoded = encoding.msgpack_decode(b64_input)
             if isinstance(decoded, transaction.SignedTransaction):
                 signed_txns.append(decoded)
+            elif isinstance(decoded, transaction.Transaction):
+                # Unsigned transaction - wrap in SignedTransaction with empty sig
+                signed_txns.append(
+                    transaction.SignedTransaction(decoded, signature=None)
+                )
             elif isinstance(decoded, dict):
                 if "sig" in decoded or "msig" in decoded or "lsig" in decoded:
                     # It's a signed transaction dict
@@ -322,12 +366,16 @@ class FacilitatorAlgorandSigner:
         network: str,
     ) -> str:
         """Send a transaction group to the network."""
+        import base64
+
         client = self._get_client(network)
 
         # Decode all transactions
         signed_txns = []
         for txn_bytes in group_bytes:
-            decoded = encoding.msgpack_decode(txn_bytes)
+            # Convert bytes to b64 for msgpack_decode
+            b64_input = base64.b64encode(txn_bytes).decode("utf-8")
+            decoded = encoding.msgpack_decode(b64_input)
             if isinstance(decoded, transaction.SignedTransaction):
                 signed_txns.append(decoded)
             elif isinstance(decoded, dict):

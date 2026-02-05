@@ -183,18 +183,21 @@ class ExactAvmScheme:
 
         # Determine which transactions client should sign
         # (all transactions where sender is client's address)
+        # Note: txn.sender is already a string address in py-algorand-sdk
         client_indexes = [
             i
             for i, txn in enumerate(transactions)
-            if encoding.encode_address(txn.sender) == self._signer.address
+            if txn.sender == self._signer.address
         ]
 
         # Get unsigned transaction bytes (dictify format for signing)
+        # Note: encoding.msgpack_encode returns base64 string, convert to actual bytes
         unsigned_bytes_list: list[bytes] = []
         for txn in transactions:
             # Encode as msgpack dict format
             txn_dict = txn.dictify()
-            unsigned_bytes_list.append(encoding.msgpack_encode(txn_dict))
+            b64_encoded = encoding.msgpack_encode(txn_dict)
+            unsigned_bytes_list.append(base64.b64decode(b64_encoded))
 
         # Sign client's transactions
         signed_results = self._signer.sign_transactions(unsigned_bytes_list, client_indexes)
@@ -204,7 +207,7 @@ class ExactAvmScheme:
         for i, txn_bytes in enumerate(unsigned_bytes_list):
             signed = signed_results[i]
             if signed:
-                # Use signed transaction
+                # Use signed transaction (already bytes from signer)
                 payment_group.append(base64.b64encode(signed).decode("utf-8"))
             else:
                 # Use unsigned transaction (fee payer will sign)
