@@ -141,7 +141,6 @@ app.use(
 );
 
 app.get("/weather", (req, res) => {
-  console.log("  Resource accessed - payment verified and settled");
   res.send({
     report: {
       weather: "sunny",

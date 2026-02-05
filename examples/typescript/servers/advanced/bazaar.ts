@@ -133,7 +133,6 @@ app.use(
 );
 
 app.get("/weather", (req, res) => {
-  console.log("  Resource accessed - payment verified and settled");
   const city = (req.query.city as string) || "San Francisco";
 
   const weatherData: Record<string, { weather: string; temperature: number }> = {

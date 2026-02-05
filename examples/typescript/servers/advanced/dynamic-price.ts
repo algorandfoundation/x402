@@ -125,7 +125,6 @@ app.use(
 );
 
 app.get("/weather", (req, res) => {
-  console.log("  Resource accessed - payment verified and settled");
   const tier = req.query.tier ?? "standard";
 
   if (tier === "premium") {
