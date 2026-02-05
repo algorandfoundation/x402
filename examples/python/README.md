@@ -1,13 +1,13 @@
 # x402 Python Examples
 
-Examples for the x402 Python SDK.
+Examples for the x402 Python SDK with EVM, SVM, and AVM (Algorand) support.
 
 ## Quick Start
 
 ```bash
 cd clients/httpx
 cp .env-local .env
-# Edit .env with your EVM_PRIVATE_KEY and/or SVM_PRIVATE_KEY
+# Edit .env with your EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, and/or AVM_MNEMONIC
 uv sync
 uv run python main.py
 ```
@@ -28,6 +28,58 @@ uv run python main.py
 
 ### Facilitator
 - **[facilitator/](./facilitator/)** - Payment facilitator service
+
+## Supported Networks
+
+### EVM (Ethereum/Base)
+- Network: `eip155:84532` (Base Sepolia)
+- Private key format: `0x...` hex string
+
+### SVM (Solana)
+- Network: `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` (Devnet)
+- Private key format: Base58 string
+
+### AVM (Algorand)
+- Network: `algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=` (Testnet)
+- Private key format: 25-word mnemonic
+
+## Environment Variables
+
+### Client Examples
+```bash
+# At least one private key required
+EVM_PRIVATE_KEY=0x...
+SVM_PRIVATE_KEY=...base58...
+AVM_MNEMONIC=word1 word2 ... word25
+
+RESOURCE_SERVER_URL=http://localhost:4021
+ENDPOINT_PATH=/weather
+```
+
+### Server Examples
+```bash
+# At least one address required
+EVM_ADDRESS=0x...
+SVM_ADDRESS=...base58...
+AVM_ADDRESS=ALGORANDADDRESS...
+
+FACILITATOR_URL=https://x402.org/facilitator
+```
+
+### Facilitator Example
+```bash
+PORT=4022
+
+# At least one key required
+EVM_PRIVATE_KEY=0x...
+EVM_RPC_URL=https://sepolia.base.org
+
+SVM_PRIVATE_KEY=...base58...
+
+AVM_MNEMONIC=word1 word2 ... word25
+ALGOD_SERVER=https://testnet-api.algonode.cloud
+ALGOD_TOKEN=
+```
 
 ## Legacy SDK
 

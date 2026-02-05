@@ -5,10 +5,10 @@ The client can specify which network/scheme it prefers, with automatic
 fallback to other supported options if the preferred one isn't available.
 
 Use cases:
-- Prefer specific networks or chains (e.g., prefer L2 over L1, or Solana over EVM)
+- Prefer specific networks or chains (e.g., prefer L2 over L1, or Solana over EVM, or AVM)
 - User preference settings in a wallet UI
 - Cost optimization (prefer cheaper networks)
-- Cross-chain flexibility (support both EVM and SVM)
+- Cross-chain flexibility (support EVM, SVM, and AVM)
 """
 
 import asyncio
@@ -25,6 +25,8 @@ from x402.mechanisms.evm import EthAccountSigner
 from x402.mechanisms.evm.exact.register import register_exact_evm_client
 from x402.mechanisms.svm import KeypairSigner, SOLANA_MAINNET_CAIP2, SOLANA_DEVNET_CAIP2
 from x402.mechanisms.svm.exact.register import register_exact_svm_client
+from x402.mechanisms.avm import AlgorandSigner, ALGORAND_MAINNET_CAIP2, ALGORAND_TESTNET_CAIP2
+from x402.mechanisms.avm.exact.register import register_exact_avm_client
 from x402.schemas import PaymentRequirements, PaymentRequirementsV1
 
 load_dotenv()
@@ -33,13 +35,15 @@ load_dotenv()
 RequirementsView = PaymentRequirements | PaymentRequirementsV1
 
 # Define network preference order (most preferred first)
-# Includes both EVM (eip155) and SVM (solana) networks
+# Includes EVM (eip155), SVM (solana), and AVM (algorand) networks
 NETWORK_PREFERENCES = [
-    SOLANA_MAINNET_CAIP2,  # Solana mainnet (preferred - fast & low fees)
+    ALGORAND_MAINNET_CAIP2,  # Algorand mainnet (preferred - fast, low fees, instant finality)
+    SOLANA_MAINNET_CAIP2,  # Solana mainnet (fast & low fees)
     "eip155:8453",  # Base mainnet (low fees)
     "eip155:42161",  # Arbitrum One
     "eip155:10",  # Optimism
     "eip155:1",  # Ethereum mainnet
+    ALGORAND_TESTNET_CAIP2,  # Algorand testnet
     SOLANA_DEVNET_CAIP2,  # Solana devnet (testnet)
     "eip155:84532",  # Base Sepolia (testnet)
 ]
@@ -85,6 +89,7 @@ def preferred_network_selector(
 async def run_preferred_network_example(
     evm_private_key: str | None,
     svm_private_key: str | None,
+    avm_mnemonic: str | None,
     url: str,
 ) -> None:
     """Run the preferred network example.
@@ -92,10 +97,11 @@ async def run_preferred_network_example(
     Args:
         evm_private_key: EVM private key for signing (optional).
         svm_private_key: Solana private key for signing (optional).
+        avm_mnemonic: Algorand mnemonic for signing (optional).
         url: URL to make the request to.
     """
-    if not evm_private_key and not svm_private_key:
-        print("Error: At least one of EVM_PRIVATE_KEY or SVM_PRIVATE_KEY is required")
+    if not evm_private_key and not svm_private_key and not avm_mnemonic:
+        print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_MNEMONIC is required")
         sys.exit(1)
 
     print("🎯 Creating client with preferred network selection...\n")
@@ -114,6 +120,12 @@ async def run_preferred_network_example(
         svm_signer = KeypairSigner.from_base58(svm_private_key)
         print(f"Solana wallet address: {svm_signer.address}")
         register_exact_svm_client(client, svm_signer)
+
+    # Register AVM signer if mnemonic provided
+    if avm_mnemonic:
+        avm_signer = AlgorandSigner.from_mnemonic(avm_mnemonic)
+        print(f"Algorand wallet address: {avm_signer.address}")
+        register_exact_avm_client(client, avm_signer)
 
     print(f"Network preferences: {', '.join(NETWORK_PREFERENCES)}\n")
 
@@ -145,16 +157,17 @@ async def main() -> None:
     """Main entry point."""
     evm_private_key = os.getenv("EVM_PRIVATE_KEY")
     svm_private_key = os.getenv("SVM_PRIVATE_KEY")
+    avm_mnemonic = os.getenv("AVM_MNEMONIC")
     base_url = os.getenv("RESOURCE_SERVER_URL", "http://localhost:4021")
     endpoint_path = os.getenv("ENDPOINT_PATH", "/weather")
 
-    if not evm_private_key and not svm_private_key:
-        print("Error: At least one of EVM_PRIVATE_KEY or SVM_PRIVATE_KEY is required")
+    if not evm_private_key and not svm_private_key and not avm_mnemonic:
+        print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_MNEMONIC is required")
         print("Please copy .env-local to .env and fill in the values.")
         sys.exit(1)
 
     url = f"{base_url}{endpoint_path}"
-    await run_preferred_network_example(evm_private_key, svm_private_key, url)
+    await run_preferred_network_example(evm_private_key, svm_private_key, avm_mnemonic, url)
 
 
 if __name__ == "__main__":

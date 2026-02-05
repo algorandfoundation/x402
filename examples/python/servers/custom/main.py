@@ -29,6 +29,8 @@ from fastapi.responses import JSONResponse
 
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
+from x402.mechanisms.avm.exact import ExactAvmServerScheme
+from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
 from x402.schemas import Network, PaymentPayload, PaymentRequirements, ResourceConfig
 from x402.server import x402ResourceServer
 
@@ -36,11 +38,13 @@ load_dotenv()
 
 # Config
 EVM_ADDRESS = os.getenv("EVM_ADDRESS")
+AVM_ADDRESS = os.getenv("AVM_ADDRESS")
 EVM_NETWORK: Network = "eip155:84532"  # Base Sepolia
+AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2  # Algorand Testnet
 FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://x402.org/facilitator")
 
-if not EVM_ADDRESS:
-    print("❌ EVM_ADDRESS environment variable is required")
+if not EVM_ADDRESS and not AVM_ADDRESS:
+    print("❌ At least one of EVM_ADDRESS or AVM_ADDRESS is required")
     sys.exit(1)
 
 if not FACILITATOR_URL:
@@ -49,16 +53,20 @@ if not FACILITATOR_URL:
 
 print("\n🔧 Custom x402 Server Implementation")
 print("This example demonstrates manual payment handling without middleware.\n")
-print(f"✅ Payment address: {EVM_ADDRESS}")
+if EVM_ADDRESS:
+    print(f"✅ EVM Payment address: {EVM_ADDRESS}")
+if AVM_ADDRESS:
+    print(f"✅ AVM Payment address: {AVM_ADDRESS}")
 print(f"✅ Facilitator: {FACILITATOR_URL}\n")
 
 
 # Create facilitator client and resource server
 facilitator_client = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
-resource_server = x402ResourceServer(facilitator_client).register(
-    EVM_NETWORK,
-    ExactEvmServerScheme(),
-)
+resource_server = x402ResourceServer(facilitator_client)
+if EVM_ADDRESS:
+    resource_server = resource_server.register(EVM_NETWORK, ExactEvmServerScheme())
+if AVM_ADDRESS:
+    resource_server = resource_server.register(AVM_NETWORK, ExactAvmServerScheme())
 
 
 # Route payment configuration
@@ -74,16 +82,28 @@ class RoutePaymentConfig:
     mime_type: str
 
 
-route_configs: dict[str, RoutePaymentConfig] = {
-    "GET /weather": RoutePaymentConfig(
+# Build route configs based on available addresses
+route_configs: dict[str, RoutePaymentConfig] = {}
+
+# Use EVM if available, otherwise use AVM
+if EVM_ADDRESS:
+    route_configs["GET /weather"] = RoutePaymentConfig(
         scheme="exact",
         price="$0.001",
         network=EVM_NETWORK,
-        pay_to=EVM_ADDRESS,  # type: ignore
+        pay_to=EVM_ADDRESS,
         description="Weather data",
         mime_type="application/json",
-    ),
-}
+    )
+elif AVM_ADDRESS:
+    route_configs["GET /weather"] = RoutePaymentConfig(
+        scheme="exact",
+        price="$0.001",
+        network=AVM_NETWORK,
+        pay_to=AVM_ADDRESS,
+        description="Weather data",
+        mime_type="application/json",
+    )
 
 
 # Cache for built payment requirements

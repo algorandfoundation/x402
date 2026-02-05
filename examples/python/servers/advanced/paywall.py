@@ -8,10 +8,12 @@ from pydantic import BaseModel
 
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
-from x402.http.paywall import create_paywall, evm_paywall, svm_paywall
+from x402.http.paywall import create_paywall, evm_paywall, svm_paywall, avm_paywall
 from x402.http.types import RouteConfig
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 from x402.mechanisms.svm.exact import ExactSvmServerScheme
+from x402.mechanisms.avm.exact import ExactAvmServerScheme
+from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2, USDC_TESTNET_ASA_ID
 from x402.schemas import AssetAmount, Network
 from x402.server import x402ResourceServer
 
@@ -20,12 +22,14 @@ load_dotenv()
 # Config
 EVM_ADDRESS = os.getenv("EVM_ADDRESS")
 SVM_ADDRESS = os.getenv("SVM_ADDRESS")
+AVM_ADDRESS = os.getenv("AVM_ADDRESS")
 EVM_NETWORK: Network = "eip155:84532"  # Base Sepolia
 SVM_NETWORK: Network = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"  # Solana Devnet
+AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2  # Algorand Testnet
 FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://x402.org/facilitator")
 
-if not EVM_ADDRESS or not SVM_ADDRESS:
-    raise ValueError("Missing required environment variables (EVM_ADDRESS, SVM_ADDRESS)")
+if not EVM_ADDRESS and not SVM_ADDRESS and not AVM_ADDRESS:
+    raise ValueError("At least one of EVM_ADDRESS, SVM_ADDRESS, or AVM_ADDRESS is required")
 
 
 class WeatherReport(BaseModel):
@@ -45,60 +49,101 @@ app = FastAPI()
 
 facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
 server = x402ResourceServer(facilitator)
-server.register(EVM_NETWORK, ExactEvmServerScheme())
-server.register(SVM_NETWORK, ExactSvmServerScheme())
+if EVM_ADDRESS:
+    server.register(EVM_NETWORK, ExactEvmServerScheme())
+if SVM_ADDRESS:
+    server.register(SVM_NETWORK, ExactSvmServerScheme())
+if AVM_ADDRESS:
+    server.register(AVM_NETWORK, ExactAvmServerScheme())
+
+# Build accepts lists based on available addresses
+weather_accepts = []
+premium_accepts = []
+
+if EVM_ADDRESS:
+    weather_accepts.append(
+        PaymentOption(
+            scheme="exact",
+            pay_to=EVM_ADDRESS,
+            price="$0.01",
+            network=EVM_NETWORK,
+        )
+    )
+    premium_accepts.append(
+        PaymentOption(
+            scheme="exact",
+            pay_to=EVM_ADDRESS,
+            price=AssetAmount(
+                amount="10000",  # $0.01 USDC
+                asset="0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+                extra={"name": "USDC", "version": "2"},
+            ),
+            network=EVM_NETWORK,
+        )
+    )
+
+if SVM_ADDRESS:
+    weather_accepts.append(
+        PaymentOption(
+            scheme="exact",
+            pay_to=SVM_ADDRESS,
+            price="$0.01",
+            network=SVM_NETWORK,
+        )
+    )
+    premium_accepts.append(
+        PaymentOption(
+            scheme="exact",
+            pay_to=SVM_ADDRESS,
+            price="$0.01",
+            network=SVM_NETWORK,
+        )
+    )
+
+if AVM_ADDRESS:
+    weather_accepts.append(
+        PaymentOption(
+            scheme="exact",
+            pay_to=AVM_ADDRESS,
+            price="$0.01",
+            network=AVM_NETWORK,
+        )
+    )
+    premium_accepts.append(
+        PaymentOption(
+            scheme="exact",
+            pay_to=AVM_ADDRESS,
+            price=AssetAmount(
+                amount="10000",  # $0.01 USDC (6 decimals)
+                asset=str(USDC_TESTNET_ASA_ID),
+                extra={"name": "USDC", "decimals": 6},
+            ),
+            network=AVM_NETWORK,
+        )
+    )
 
 routes = {
     "GET /weather": RouteConfig(
-        accepts=[
-            PaymentOption(
-                scheme="exact",
-                pay_to=EVM_ADDRESS,
-                price="$0.01",
-                network=EVM_NETWORK,
-            ),
-            PaymentOption(
-                scheme="exact",
-                pay_to=SVM_ADDRESS,
-                price="$0.01",
-                network=SVM_NETWORK,
-            ),
-        ],
+        accepts=weather_accepts,
         mime_type="application/json",
         description="Weather report",
     ),
     "GET /premium/*": RouteConfig(
-        accepts=[
-            PaymentOption(
-                scheme="exact",
-                pay_to=EVM_ADDRESS,
-                price=AssetAmount(
-                    amount="10000",  # $0.01 USDC
-                    asset="0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-                    extra={"name": "USDC", "version": "2"},
-                ),
-                network=EVM_NETWORK,
-            ),
-            PaymentOption(
-                scheme="exact",
-                pay_to=SVM_ADDRESS,
-                price="$0.01",
-                network=SVM_NETWORK,
-            ),
-        ],
+        accepts=premium_accepts,
         mime_type="application/json",
         description="Premium content",
     ),
 }
 
 # Paywall provider for browser-based payment UI
-paywall = (
-    create_paywall()
-    .with_network(evm_paywall)
-    .with_network(svm_paywall)
-    .with_config(app_name="x402 Paywall Demo", testnet=True)
-    .build()
-)
+paywall_builder = create_paywall()
+if EVM_ADDRESS:
+    paywall_builder = paywall_builder.with_network(evm_paywall)
+if SVM_ADDRESS:
+    paywall_builder = paywall_builder.with_network(svm_paywall)
+if AVM_ADDRESS:
+    paywall_builder = paywall_builder.with_network(avm_paywall)
+paywall = paywall_builder.with_config(app_name="x402 Paywall Demo", testnet=True).build()
 
 app.add_middleware(
     PaymentMiddlewareASGI,

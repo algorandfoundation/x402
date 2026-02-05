@@ -13,28 +13,31 @@ from x402.mechanisms.evm import EthAccountSigner
 from x402.mechanisms.evm.exact.register import register_exact_evm_client
 from x402.mechanisms.svm import KeypairSigner
 from x402.mechanisms.svm.exact.register import register_exact_svm_client
+from x402.mechanisms.avm import AlgorandSigner
+from x402.mechanisms.avm.exact.register import register_exact_avm_client
 
 # Load environment variables
 load_dotenv()
 
 
-def validate_environment() -> tuple[str | None, str | None, str, str]:
+def validate_environment() -> tuple[str | None, str | None, str | None, str, str]:
     """Validate required environment variables.
 
     Returns:
-        Tuple of (evm_private_key, svm_private_key, base_url, endpoint_path).
+        Tuple of (evm_private_key, svm_private_key, avm_mnemonic, base_url, endpoint_path).
 
     Raises:
         SystemExit: If required environment variables are missing.
     """
     evm_private_key = os.getenv("EVM_PRIVATE_KEY")
     svm_private_key = os.getenv("SVM_PRIVATE_KEY")
+    avm_mnemonic = os.getenv("AVM_MNEMONIC")
     base_url = os.getenv("RESOURCE_SERVER_URL")
     endpoint_path = os.getenv("ENDPOINT_PATH")
 
     missing = []
-    if not evm_private_key and not svm_private_key:
-        missing.append("EVM_PRIVATE_KEY or SVM_PRIVATE_KEY")
+    if not evm_private_key and not svm_private_key and not avm_mnemonic:
+        missing.append("EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_MNEMONIC")
     if not base_url:
         missing.append("RESOURCE_SERVER_URL")
     if not endpoint_path:
@@ -45,13 +48,15 @@ def validate_environment() -> tuple[str | None, str | None, str, str]:
         print("Please copy .env-local to .env and fill in the values.")
         sys.exit(1)
 
-    return evm_private_key, svm_private_key, base_url, endpoint_path
+    return evm_private_key, svm_private_key, avm_mnemonic, base_url, endpoint_path
 
 
 def main() -> None:
     """Main entry point demonstrating requests with x402 payments."""
     # Validate environment
-    evm_private_key, svm_private_key, base_url, endpoint_path = validate_environment()
+    evm_private_key, svm_private_key, avm_mnemonic, base_url, endpoint_path = (
+        validate_environment()
+    )
 
     # Create x402 client (sync variant for requests)
     client = x402ClientSync()
@@ -68,6 +73,12 @@ def main() -> None:
         register_exact_svm_client(client, svm_signer)
         print(f"Initialized SVM account: {svm_signer.address}")
 
+    # Register AVM (Algorand) payment scheme if mnemonic provided
+    if avm_mnemonic:
+        avm_signer = AlgorandSigner.from_mnemonic(avm_mnemonic)
+        register_exact_avm_client(client, avm_signer)
+        print(f"Initialized AVM account: {avm_signer.address}")
+
     # Create HTTP client helper for payment response extraction (sync)
     http_client = x402HTTPClientSync(client)
 
@@ -76,8 +87,9 @@ def main() -> None:
     print(f"Making request to: {url}\n")
 
     # Make request using context manager for proper cleanup
+    # Use longer timeout for blockchain transactions (Algorand can take up to 4.5s per block)
     with x402_requests(client) as session:
-        response = session.get(url)
+        response = session.get(url, timeout=60)
 
         print(f"Response status: {response.status_code}")
         print(f"Response body: {response.text}")
