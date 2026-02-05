@@ -41,7 +41,7 @@ uv run python main.py
 
 ### AVM (Algorand)
 - Network: `algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=` (Testnet)
-- Private key format: 25-word mnemonic
+- Private key format: 24-word BIP-39 or 25-word Algorand native mnemonic
 
 ## Environment Variables
 
@@ -50,7 +50,7 @@ uv run python main.py
 # At least one private key required
 EVM_PRIVATE_KEY=0x...
 SVM_PRIVATE_KEY=...base58...
-AVM_MNEMONIC=word1 word2 ... word25
+AVM_MNEMONIC=word1 word2 ... (24-word BIP-39 or 25-word Algorand)
 
 RESOURCE_SERVER_URL=http://localhost:4021
 ENDPOINT_PATH=/weather
@@ -76,7 +76,7 @@ EVM_RPC_URL=https://sepolia.base.org
 
 SVM_PRIVATE_KEY=...base58...
 
-AVM_MNEMONIC=word1 word2 ... word25
+AVM_MNEMONIC=word1 word2 ... (24-word BIP-39 or 25-word Algorand)
 ALGOD_SERVER=https://testnet-api.algonode.cloud
 ALGOD_TOKEN=
 ```

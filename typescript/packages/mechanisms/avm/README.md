@@ -112,6 +112,46 @@ const client = x402Client.fromConfig({
 - `algorand-mainnet` - Mainnet
 - `algorand-testnet` - Testnet
 
+## Mnemonic Support
+
+The package supports both Algorand native 25-word mnemonics and BIP-39 24-word mnemonics:
+
+```typescript
+import { mnemonicToAlgorandAccount, deriveAlgorandFromBip39 } from "@x402/avm";
+
+// Algorand native 25-word mnemonic
+const account1 = mnemonicToAlgorandAccount("word1 word2 ... word25");
+
+// BIP-39 24-word mnemonic (compatible with Lute, Pera, Defly wallets)
+const account2 = mnemonicToAlgorandAccount("word1 word2 ... word24");
+
+// Derive multiple accounts from BIP-39 mnemonic
+const account3 = deriveAlgorandFromBip39("word1 word2 ... word24", 1); // account index 1
+```
+
+BIP-39 mnemonics use **BIP32-Ed25519** derivation with path `m/44'/283'/0'/0/{index}`.
+
+### BIP32-Ed25519 HD Key Derivation
+
+For advanced use cases, the package exports the full BIP32-Ed25519 implementation:
+
+```typescript
+import {
+  fromSeed,
+  deriveKey,
+  getPublicKey,
+  getAlgorandBIP44Path,
+  harden,
+  BIP32DerivationType
+} from "@x402/avm";
+
+// Derive from raw seed
+const rootKey = fromSeed(seed);
+const path = getAlgorandBIP44Path(0, 0); // m/44'/283'/0'/0/0
+const derivedKey = deriveKey(rootKey, path, BIP32DerivationType.Peikert);
+const publicKey = getPublicKey(derivedKey);
+```
+
 ## Asset Support
 
 Supports Algorand Standard Assets (ASA):

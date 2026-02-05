@@ -24,9 +24,11 @@ class ExactAvmSchemeV1:
 
     Attributes:
         scheme: The scheme identifier ("exact").
+        caip_family: The CAIP-2 family for Algorand networks.
     """
 
     scheme = "exact"
+    caip_family = "algorand"
 
     def __init__(self, signer: "FacilitatorAvmSigner"):
         """Create ExactAvmSchemeV1.
@@ -50,6 +52,18 @@ class ExactAvmSchemeV1:
         """
         v2_network = V1_TO_V2_NETWORK_MAP.get(network, network)
         return self._v2_scheme.get_signers(v2_network)
+
+    def get_extra(self, network: str) -> dict[str, Any] | None:
+        """Get extra configuration for a network.
+
+        Args:
+            network: V1 network name.
+
+        Returns:
+            Extra configuration dict, or None.
+        """
+        v2_network = V1_TO_V2_NETWORK_MAP.get(network, network)
+        return self._v2_scheme.get_extra(v2_network)
 
     def verify(
         self,

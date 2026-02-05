@@ -14,6 +14,10 @@ import {
   V1_ALGORAND_MAINNET,
   V1_ALGORAND_TESTNET,
 } from "./constants";
+import {
+  signTransactionWithExtendedKey,
+  ExtendedAlgorandAccount,
+} from "./mnemonic";
 
 /**
  * Client-side signer interface for Algorand wallets
@@ -172,13 +176,18 @@ export interface FacilitatorAvmSignerConfig {
  * ```
  */
 export function toFacilitatorAvmSigner(
-  account: algosdk.Account,
+  account: algosdk.Account | ExtendedAlgorandAccount,
   config?: FacilitatorAvmSignerConfig,
 ): FacilitatorAvmSigner {
   const mainnetClient =
     config?.mainnet ?? new algosdk.Algodv2("", DEFAULT_ALGOD_MAINNET, "");
   const testnetClient =
     config?.testnet ?? new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
+
+  // Check if this is an extended account that needs custom signing
+  const extendedAccount = account as ExtendedAlgorandAccount;
+  const useExtendedSigning =
+    extendedAccount.useExtendedSigning && extendedAccount.extendedKey;
 
   const getAlgodForNetwork = (network: Network): algosdk.Algodv2 => {
     const networkStr = network as string;
@@ -218,9 +227,17 @@ export function toFacilitatorAvmSigner(
         );
       }
 
-      // Sign the transaction
-      const signedTxn = algosdk.signTransaction(decodedTxn, account.sk);
-      return signedTxn.blob;
+      // Sign the transaction - use extended signing for BIP-39 derived accounts
+      if (useExtendedSigning && extendedAccount.extendedKey) {
+        const signedTxn = signTransactionWithExtendedKey(
+          decodedTxn,
+          extendedAccount.extendedKey,
+        );
+        return algosdk.encodeMsgpack(signedTxn);
+      } else {
+        const signedTxn = algosdk.signTransaction(decodedTxn, account.sk);
+        return signedTxn.blob;
+      }
     },
 
     getAlgodClient: (network: Network) => getAlgodForNetwork(network),
@@ -278,7 +295,7 @@ export function toFacilitatorAvmSigner(
  * @returns A FacilitatorAvmSigner instance with multiple addresses
  */
 export function toMultiAccountFacilitatorAvmSigner(
-  accounts: algosdk.Account[],
+  accounts: (algosdk.Account | ExtendedAlgorandAccount)[],
   config?: FacilitatorAvmSignerConfig,
 ): FacilitatorAvmSigner {
   if (accounts.length === 0) {
@@ -290,7 +307,10 @@ export function toMultiAccountFacilitatorAvmSigner(
   const testnetClient =
     config?.testnet ?? new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
 
-  const accountMap = new Map<string, algosdk.Account>();
+  const accountMap = new Map<
+    string,
+    algosdk.Account | ExtendedAlgorandAccount
+  >();
   for (const account of accounts) {
     accountMap.set(account.addr.toString(), account);
   }
@@ -332,8 +352,18 @@ export function toMultiAccountFacilitatorAvmSigner(
         );
       }
 
-      const signedTxn = algosdk.signTransaction(decodedTxn, account.sk);
-      return signedTxn.blob;
+      // Check if this is an extended account that needs custom signing
+      const extendedAccount = account as ExtendedAlgorandAccount;
+      if (extendedAccount.useExtendedSigning && extendedAccount.extendedKey) {
+        const signedTxn = signTransactionWithExtendedKey(
+          decodedTxn,
+          extendedAccount.extendedKey,
+        );
+        return algosdk.encodeMsgpack(signedTxn);
+      } else {
+        const signedTxn = algosdk.signTransaction(decodedTxn, account.sk);
+        return signedTxn.blob;
+      }
     },
 
     getAlgodClient: (network: Network) => getAlgodForNetwork(network),
@@ -397,10 +427,20 @@ export function isAvmSignerWallet(wallet: unknown): wallet is ClientAvmSigner {
 /**
  * Converts an algosdk Account to a ClientAvmSigner for local signing
  *
- * @param account - The algosdk account
+ * Supports both standard algosdk accounts and extended accounts derived from
+ * BIP-39 mnemonics. Extended accounts use custom BIP32-Ed25519 signing.
+ *
+ * @param account - The algosdk account (or ExtendedAlgorandAccount for BIP-39)
  * @returns A ClientAvmSigner instance
  */
-export function toClientAvmSigner(account: algosdk.Account): ClientAvmSigner {
+export function toClientAvmSigner(
+  account: algosdk.Account | ExtendedAlgorandAccount,
+): ClientAvmSigner {
+  // Check if this is an extended account that needs custom signing
+  const extendedAccount = account as ExtendedAlgorandAccount;
+  const useExtendedSigning =
+    extendedAccount.useExtendedSigning && extendedAccount.extendedKey;
+
   return {
     address: account.addr.toString(),
     signTransactions: async (
@@ -413,8 +453,18 @@ export function toClientAvmSigner(account: algosdk.Account): ClientAvmSigner {
       for (let i = 0; i < txns.length; i++) {
         if (indexes.includes(i)) {
           const decodedTxn = algosdk.decodeUnsignedTransaction(txns[i]);
-          const signedTxn = algosdk.signTransaction(decodedTxn, account.sk);
-          signedTxns.push(signedTxn.blob);
+
+          // Use extended signing for BIP-39 derived accounts
+          if (useExtendedSigning && extendedAccount.extendedKey) {
+            const signedTxn = signTransactionWithExtendedKey(
+              decodedTxn,
+              extendedAccount.extendedKey,
+            );
+            signedTxns.push(algosdk.encodeMsgpack(signedTxn));
+          } else {
+            const signedTxn = algosdk.signTransaction(decodedTxn, account.sk);
+            signedTxns.push(signedTxn.blob);
+          }
         } else {
           signedTxns.push(null);
         }

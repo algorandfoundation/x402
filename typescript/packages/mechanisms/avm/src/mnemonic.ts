@@ -2,30 +2,49 @@
  * AVM (Algorand) Mnemonic Utilities for x402 Payment Protocol
  *
  * Supports both Algorand native 25-word mnemonics and BIP-39 24-word mnemonics.
- * BIP-39 mnemonics use SLIP-0010 ed25519 derivation with the Algorand derivation path.
+ * BIP-39 mnemonics use BIP32-Ed25519 derivation with the Algorand derivation path.
  *
- * @see https://github.com/satoshilabs/slips/blob/master/slip-0010.md - SLIP-0010 spec
+ * @see https://acrobat.adobe.com/id/urn:aaid:sc:EU:04fe29b0-ea1a-478b-a886-9bb558a5242a - BIP32-Ed25519 spec
  * @see https://github.com/satoshilabs/slips/blob/master/slip-0044.md - Coin type 283 = Algorand
  */
 
 import algosdk from "algosdk";
-import { HDKey } from "@scure/bip32";
 import { mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
-import { ed25519 } from "@noble/curves/ed25519";
+import {
+  fromSeed,
+  deriveKey,
+  getPublicKey,
+  getAlgorandBIP44Path,
+  BIP32DerivationType,
+  signWithExtendedKey,
+} from "./bip32-ed25519";
+
+/**
+ * Extended Algorand account with BIP32-Ed25519 key material
+ * Used for accounts derived from BIP-39 mnemonics that require custom signing
+ */
+export interface ExtendedAlgorandAccount extends algosdk.Account {
+  /** Extended key bytes (kL || kR || chainCode) - 96 bytes, for custom signing */
+  extendedKey?: Uint8Array;
+  /** Whether this account requires custom BIP32-Ed25519 signing */
+  useExtendedSigning?: boolean;
+}
 
 /**
  * Algorand BIP-44 derivation path
- * m/44'/283'/0'/0'
+ * m/44'/283'/0'/0/0
  * - 44' = BIP-44 purpose
  * - 283' = Algorand coin type (registered in SLIP-44)
  * - 0' = account index
- * - 0' = change (external chain)
+ * - 0 = change (external chain, non-hardened)
+ * - 0 = address index (non-hardened)
  *
- * Note: Algorand wallets typically use the first key at this path.
- * Some wallets may derive additional accounts by incrementing the account index.
+ * Note: Uses BIP32-Ed25519 derivation (Khovratovich/Peikert specification).
+ * This provides proper ed25519 HD key derivation with both hardened and non-hardened support.
+ * Additional addresses can be derived by incrementing the address index.
  */
-export const ALGORAND_DERIVATION_PATH = "m/44'/283'/0'/0'";
+export const ALGORAND_DERIVATION_PATH = "m/44'/283'/0'/0/0";
 
 /**
  * Result of mnemonic type detection
@@ -72,8 +91,8 @@ export function detectMnemonicType(mnemonic: string): MnemonicType {
 /**
  * Derives an Algorand account from a BIP-39 24-word mnemonic
  *
- * Uses SLIP-0010 ed25519 derivation with the standard Algorand derivation path.
- * This is compatible with wallets like Pera, Defly, and other BIP-39 compatible Algorand wallets.
+ * Uses BIP32-Ed25519 derivation with the standard Algorand derivation path.
+ * This is compatible with wallets like Lute, Pera, Defly, and other BIP-39 compatible Algorand wallets.
  *
  * @param mnemonic - BIP-39 24-word mnemonic phrase
  * @param accountIndex - Optional account index (default: 0)
@@ -89,37 +108,33 @@ export function detectMnemonicType(mnemonic: string): MnemonicType {
 export function deriveAlgorandFromBip39(
   mnemonic: string,
   accountIndex: number = 0,
-): algosdk.Account {
+): ExtendedAlgorandAccount {
   // Validate the mnemonic
   if (!validateMnemonic(mnemonic, wordlist)) {
     throw new Error("Invalid BIP-39 mnemonic phrase");
   }
 
-  // Convert mnemonic to seed (BIP-39)
+  // Convert mnemonic to seed (BIP-39) - this produces 64 bytes
+  // BIP32-Ed25519 can work with either 32 or 64 byte seeds
+  // The fromSeed function hashes the seed with SHA-512, so the input size is flexible
   const seed = mnemonicToSeedSync(mnemonic);
 
-  // Derive the master key using SLIP-0010 for ed25519
-  const masterKey = HDKey.fromMasterSeed(seed);
+  // Derive the root key using BIP32-Ed25519
+  const rootKey = fromSeed(seed);
 
-  // Build the derivation path with optional account index
-  // Standard path: m/44'/283'/accountIndex'/0'
-  const path =
-    accountIndex === 0
-      ? ALGORAND_DERIVATION_PATH
-      : `m/44'/283'/${accountIndex}'/0'`;
+  // Get the BIP44 path for Algorand
+  const bip44Path = getAlgorandBIP44Path(0, accountIndex);
 
-  // Derive the key at the specified path
-  const derivedKey = masterKey.derive(path);
+  // Derive the key at the specified path using Peikert derivation (9 bits)
+  // This allows for more derivation levels while maintaining security
+  const derivedKey = deriveKey(rootKey, bip44Path, BIP32DerivationType.Peikert);
 
-  if (!derivedKey.privateKey) {
-    throw new Error("Failed to derive private key from mnemonic");
-  }
+  // Get the public key from the derived extended key
+  const publicKey = getPublicKey(derivedKey);
 
-  // The derived private key (seed) is 32 bytes
-  const privateKeySeed = derivedKey.privateKey;
-
-  // Derive the public key from the private key seed using ed25519
-  const publicKey = ed25519.getPublicKey(privateKeySeed);
+  // The derived scalar (left 32 bytes) is used as the private key seed
+  // Note: In BIP32-Ed25519, the scalar IS the private key (already processed/clamped)
+  const privateKeySeed = derivedKey.subarray(0, 32);
 
   // Algorand's secret key format is 64 bytes: [32-byte seed | 32-byte public key]
   // This matches the NaCl sign.keyPair.fromSeed format used internally by algosdk
@@ -134,7 +149,39 @@ export function deriveAlgorandFromBip39(
   return {
     addr: address,
     sk: secretKey,
+    // Store the extended key for custom signing (needed for BIP32-Ed25519)
+    extendedKey: new Uint8Array(derivedKey),
+    useExtendedSigning: true,
   };
+}
+
+/**
+ * Sign a transaction using BIP32-Ed25519 extended key
+ *
+ * This function must be used for signing transactions with BIP-39 derived accounts
+ * because algosdk's standard signing re-hashes the key, which produces incorrect
+ * signatures for BIP32-Ed25519 derived scalars.
+ *
+ * @param txn - The transaction to sign
+ * @param extendedKey - Extended key bytes (kL || kR || chainCode) - 96 bytes
+ * @returns Signed transaction
+ */
+export function signTransactionWithExtendedKey(
+  txn: algosdk.Transaction,
+  extendedKey: Uint8Array,
+): algosdk.SignedTransaction {
+  // Get the bytes to sign: "TX" prefix + msgpack encoded transaction
+  const txnBytes = txn.toByte();
+  const bytesToSign = new Uint8Array(2 + txnBytes.length);
+  bytesToSign[0] = "T".charCodeAt(0);
+  bytesToSign[1] = "X".charCodeAt(0);
+  bytesToSign.set(txnBytes, 2);
+
+  // Sign with the extended key using BIP32-Ed25519 signing
+  const signature = signWithExtendedKey(extendedKey, bytesToSign);
+
+  // Create signed transaction with the signature
+  return new algosdk.SignedTransaction({ txn, sig: signature });
 }
 
 /**
@@ -173,7 +220,7 @@ export function mnemonicToAlgorandAccount(
       return algosdk.mnemonicToSecretKey(mnemonic);
 
     case "bip39-24":
-      // BIP-39 mnemonic - use SLIP-0010 derivation
+      // BIP-39 mnemonic - use BIP32-Ed25519 derivation
       return deriveAlgorandFromBip39(mnemonic, accountIndex);
 
     case "invalid":

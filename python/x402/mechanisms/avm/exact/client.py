@@ -190,13 +190,13 @@ class ExactAvmScheme:
             if txn.sender == self._signer.address
         ]
 
-        # Get unsigned transaction bytes (dictify format for signing)
+        # Get unsigned transaction bytes
         # Note: encoding.msgpack_encode returns base64 string, convert to actual bytes
+        # IMPORTANT: Encode Transaction objects directly, not dictionaries!
         unsigned_bytes_list: list[bytes] = []
         for txn in transactions:
-            # Encode as msgpack dict format
-            txn_dict = txn.dictify()
-            b64_encoded = encoding.msgpack_encode(txn_dict)
+            # Encode the Transaction object directly (not txn.dictify())
+            b64_encoded = encoding.msgpack_encode(txn)
             unsigned_bytes_list.append(base64.b64decode(b64_encoded))
 
         # Sign client's transactions

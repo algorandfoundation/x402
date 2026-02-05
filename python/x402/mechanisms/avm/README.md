@@ -100,6 +100,53 @@ facilitator.register(
 - `algorand-mainnet` - Mainnet
 - `algorand-testnet` - Testnet
 
+## Mnemonic Support
+
+The package supports both Algorand native 25-word mnemonics and BIP-39 24-word mnemonics:
+
+```python
+from x402.mechanisms.avm import mnemonic_to_algorand_account, derive_algorand_from_bip39
+
+# Algorand native 25-word mnemonic
+account1 = mnemonic_to_algorand_account("word1 word2 ... word25")
+
+# BIP-39 24-word mnemonic (compatible with Lute, Pera, Defly wallets)
+account2 = mnemonic_to_algorand_account("word1 word2 ... word24")
+
+# Derive multiple accounts from BIP-39 mnemonic
+account3 = derive_algorand_from_bip39("word1 word2 ... word24", account_index=1)
+```
+
+BIP-39 mnemonics use **BIP32-Ed25519** derivation with path `m/44'/283'/0'/0/{index}`.
+
+### BIP32-Ed25519 HD Key Derivation
+
+For advanced use cases, the package exports the full BIP32-Ed25519 implementation:
+
+```python
+from x402.mechanisms.avm import (
+    from_seed,
+    derive_key,
+    get_public_key,
+    get_algorand_bip44_path,
+    harden,
+    sign_with_extended_key,
+    BIP32DerivationType
+)
+
+# Derive from raw seed
+root_key = from_seed(seed)
+path = get_algorand_bip44_path(0, 0)  # m/44'/283'/0'/0/0
+derived_key = derive_key(root_key, path, BIP32DerivationType.PEIKERT)
+public_key = get_public_key(derived_key)
+
+# Sign a message with the derived key
+# Note: For BIP32-Ed25519 keys, use sign_with_extended_key instead of algosdk's
+# standard signing, which re-hashes the key and produces incorrect signatures.
+message = b"TX" + transaction_bytes  # Algorand transaction signing prefix
+signature = sign_with_extended_key(derived_key, message)
+```
+
 ## Asset Support
 
 Supports Algorand Standard Assets (ASAs):

@@ -1,5 +1,6 @@
 """AVM mechanism constants - network configs, ASA IDs, error codes."""
 
+import os
 from typing import TypedDict
 
 # Scheme identifier
@@ -17,13 +18,27 @@ MAX_GROUP_SIZE = 16
 # Algorand address validation regex (58 character base32 with checksum)
 AVM_ADDRESS_REGEX = r"^[A-Z2-7]{58}$"
 
-# Default Algod URLs for Algorand networks
-MAINNET_ALGOD_URL = "https://mainnet-api.algonode.cloud"
-TESTNET_ALGOD_URL = "https://testnet-api.algonode.cloud"
+# ============================================================================
+# Algod API Endpoints
+# ============================================================================
 
-# Default Indexer URLs
-MAINNET_INDEXER_URL = "https://mainnet-idx.algonode.cloud"
-TESTNET_INDEXER_URL = "https://testnet-idx.algonode.cloud"
+# Fallback Algod API endpoints (AlgoNode public endpoints)
+FALLBACK_ALGOD_MAINNET = "https://mainnet-api.algonode.cloud"
+FALLBACK_ALGOD_TESTNET = "https://testnet-api.algonode.cloud"
+
+# Fallback Indexer API endpoints (AlgoNode public endpoints)
+FALLBACK_INDEXER_MAINNET = "https://mainnet-idx.algonode.cloud"
+FALLBACK_INDEXER_TESTNET = "https://testnet-idx.algonode.cloud"
+
+# Algod URLs - check environment variables first, fall back to AlgoNode
+# Set ALGOD_MAINNET_URL or ALGOD_TESTNET_URL to use custom endpoints
+MAINNET_ALGOD_URL = os.environ.get("ALGOD_MAINNET_URL", FALLBACK_ALGOD_MAINNET)
+TESTNET_ALGOD_URL = os.environ.get("ALGOD_TESTNET_URL", FALLBACK_ALGOD_TESTNET)
+
+# Indexer URLs - check environment variables first, fall back to AlgoNode
+# Set INDEXER_MAINNET_URL or INDEXER_TESTNET_URL to use custom endpoints
+MAINNET_INDEXER_URL = os.environ.get("INDEXER_MAINNET_URL", FALLBACK_INDEXER_MAINNET)
+TESTNET_INDEXER_URL = os.environ.get("INDEXER_TESTNET_URL", FALLBACK_INDEXER_TESTNET)
 
 # USDC ASA IDs on Algorand
 USDC_MAINNET_ASA_ID = 31566704

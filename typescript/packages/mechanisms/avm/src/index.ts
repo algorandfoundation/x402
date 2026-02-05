@@ -95,6 +95,21 @@ export {
   detectMnemonicType,
   isValidMnemonic,
   getMnemonicWordCount,
+  signTransactionWithExtendedKey,
   ALGORAND_DERIVATION_PATH,
 } from "./mnemonic";
-export type { MnemonicType } from "./mnemonic";
+export type { MnemonicType, ExtendedAlgorandAccount } from "./mnemonic";
+
+// BIP32-Ed25519 HD Key Derivation
+export {
+  fromSeed,
+  deriveKey,
+  deriveChildNodePrivate,
+  deriveChildNodePublic,
+  getPublicKey,
+  getAlgorandBIP44Path,
+  harden,
+  signWithExtendedKey,
+  BIP32DerivationType,
+  HARDENED_OFFSET,
+} from "./bip32-ed25519";

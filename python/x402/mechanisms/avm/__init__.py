@@ -10,6 +10,15 @@ Features:
 - Optional fee abstraction (gasless transactions)
 - Instant finality (no consensus forks)
 - Ed25519 signature verification
+- BIP-39 24-word mnemonic support (Pera, Defly compatible)
+- Algorand native 25-word mnemonic support
+- Configurable Algod/Indexer URLs via environment variables
+
+Environment Variables:
+    ALGOD_MAINNET_URL: Custom Algod URL for mainnet (default: AlgoNode)
+    ALGOD_TESTNET_URL: Custom Algod URL for testnet (default: AlgoNode)
+    INDEXER_MAINNET_URL: Custom Indexer URL for mainnet (default: AlgoNode)
+    INDEXER_TESTNET_URL: Custom Indexer URL for testnet (default: AlgoNode)
 
 Usage:
     ```python
@@ -19,8 +28,12 @@ Usage:
     )
     from x402.mechanisms.avm.exact import ExactAvmScheme
 
-    # Client-side
+    # Client-side with 25-word Algorand mnemonic
     signer = AlgorandSigner.from_mnemonic("word1 word2 ... word25")
+
+    # Or with 24-word BIP-39 mnemonic (Pera, Defly compatible)
+    signer = AlgorandSigner.from_mnemonic("word1 word2 ... word24")
+
     client = x402Client()
     client.register("algorand:*", ExactAvmScheme(signer))
     ```
@@ -83,6 +96,32 @@ from .utils import (
     validate_no_security_risks,
 )
 
+# Mnemonic utilities
+from .mnemonic import (
+    ALGORAND_DERIVATION_PATH,
+    AlgorandAccount,
+    derive_algorand_from_bip39,
+    detect_mnemonic_type,
+    get_mnemonic_word_count,
+    is_valid_mnemonic,
+    mnemonic_to_algorand_account,
+)
+
+# BIP32-Ed25519 HD key derivation
+from .bip32_ed25519 import (
+    BIP32DerivationType,
+    ExtendedKey,
+    HARDENED_OFFSET,
+    derive_child_node_private,
+    derive_child_node_public,
+    derive_key,
+    from_seed,
+    get_algorand_bip44_path,
+    get_public_key,
+    harden,
+    sign_with_extended_key,
+)
+
 # Submodule exports
 from . import exact
 
@@ -129,6 +168,26 @@ __all__ = [
     "to_atomic_amount",
     "validate_fee_payer_transaction",
     "validate_no_security_risks",
+    # Mnemonic utilities
+    "ALGORAND_DERIVATION_PATH",
+    "AlgorandAccount",
+    "derive_algorand_from_bip39",
+    "detect_mnemonic_type",
+    "get_mnemonic_word_count",
+    "is_valid_mnemonic",
+    "mnemonic_to_algorand_account",
+    # BIP32-Ed25519 HD key derivation
+    "BIP32DerivationType",
+    "ExtendedKey",
+    "HARDENED_OFFSET",
+    "derive_child_node_private",
+    "derive_child_node_public",
+    "derive_key",
+    "from_seed",
+    "get_algorand_bip44_path",
+    "get_public_key",
+    "harden",
+    "sign_with_extended_key",
     # Submodules
     "exact",
 ]
