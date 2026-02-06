@@ -17,8 +17,8 @@ const PORT = process.env.PORT || "4022";
 const enabledNetworks: string[] = [];
 
 // Validate at least one network is configured
-if (!process.env.EVM_PRIVATE_KEY && !process.env.SVM_PRIVATE_KEY && !process.env.AVM_MNEMONIC) {
-  console.error("❌ At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_MNEMONIC must be set");
+if (!process.env.EVM_PRIVATE_KEY && !process.env.SVM_PRIVATE_KEY && !process.env.AVM_PRIVATE_KEY) {
+  console.error("❌ At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY must be set");
   process.exit(1);
 }
 
@@ -128,15 +128,55 @@ if (process.env.SVM_PRIVATE_KEY) {
 }
 
 // Conditionally initialize AVM (Algorand) support
-if (process.env.AVM_MNEMONIC) {
-  const { toFacilitatorAvmSigner, ALGORAND_TESTNET_CAIP2, mnemonicToAlgorandAccount } = await import("@x402/avm");
+if (process.env.AVM_PRIVATE_KEY) {
+  const { ALGORAND_TESTNET_CAIP2, DEFAULT_ALGOD_TESTNET } = await import("@x402/avm");
   const { registerExactAvmScheme } = await import("@x402/avm/exact/facilitator");
+  const algosdk = await import("algosdk");
 
-  // Supports both 24-word BIP-39 and 25-word Algorand native mnemonics
-  const avmAccount = mnemonicToAlgorandAccount(process.env.AVM_MNEMONIC as string);
-  console.info(`AVM Facilitator account: ${avmAccount.addr.toString()}`);
+  // Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
+  const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY as string, "base64");
+  if (secretKey.length !== 64) {
+    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
+  }
+  const address = algosdk.encodeAddress(secretKey.slice(32));
+  console.info(`AVM Facilitator account: ${address}`);
 
-  const avmSigner = toFacilitatorAvmSigner(avmAccount);
+  // Create Algod client for testnet
+  const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
+
+  // Implement FacilitatorAvmSigner interface directly
+  const avmSigner = {
+    getAddresses: () => [address] as readonly string[],
+
+    signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
+      const decoded = algosdk.decodeUnsignedTransaction(txn);
+      const signed = algosdk.signTransaction(decoded, secretKey);
+      return signed.blob;
+    },
+
+    getAlgodClient: (_network: string) => algodClient,
+
+    simulateTransactions: async (txns: Uint8Array[], _network: string) => {
+      const request = new algosdk.modelsv2.SimulateRequest({
+        txnGroups: [
+          new algosdk.modelsv2.SimulateRequestTransactionGroup({
+            txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
+          }),
+        ],
+        allowUnnamedResources: true,
+      });
+      return await algodClient.simulateTransactions(request).do();
+    },
+
+    sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
+      const response = await algodClient.sendRawTransaction(signedTxns).do();
+      return response.txid;
+    },
+
+    waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
+      return await algosdk.waitForConfirmation(algodClient, txId, waitRounds);
+    },
+  };
 
   registerExactAvmScheme(facilitator, {
     signer: avmSigner,

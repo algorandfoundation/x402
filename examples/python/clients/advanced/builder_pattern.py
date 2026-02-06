@@ -22,7 +22,7 @@ from x402.http import x402HTTPClient
 from x402.http.clients import x402HttpxClient
 from x402.mechanisms.evm import EthAccountSigner
 from x402.mechanisms.evm.exact import ExactEvmScheme
-from x402.mechanisms.avm import AlgorandSigner, ALGORAND_MAINNET_CAIP2, ALGORAND_TESTNET_CAIP2
+from x402.mechanisms.avm import ALGORAND_MAINNET_CAIP2, ALGORAND_TESTNET_CAIP2
 from x402.mechanisms.avm.exact import ExactAvmScheme
 
 load_dotenv()
@@ -31,7 +31,7 @@ load_dotenv()
 async def run_builder_pattern_example(
     evm_private_key: str | None,
     svm_private_key: str | None,
-    avm_mnemonic: str | None,
+    avm_private_key: str | None,
     url: str,
     mainnet_key: str | None = None,
     testnet_key: str | None = None,
@@ -41,13 +41,13 @@ async def run_builder_pattern_example(
     Args:
         evm_private_key: Default EVM private key for signing (optional).
         svm_private_key: Solana private key for signing (optional, for future extension).
-        avm_mnemonic: Algorand mnemonic for signing (optional).
+        avm_private_key: Base64-encoded 64-byte Algorand private key (optional).
         url: URL to make the request to.
         mainnet_key: Optional separate EVM key for mainnet (defaults to evm_private_key).
         testnet_key: Optional separate EVM key for testnet (defaults to evm_private_key).
     """
-    if not evm_private_key and not avm_mnemonic:
-        print("Error: At least one of EVM_PRIVATE_KEY or AVM_MNEMONIC is required")
+    if not evm_private_key and not avm_private_key:
+        print("Error: At least one of EVM_PRIVATE_KEY or AVM_PRIVATE_KEY is required")
         sys.exit(1)
 
     print("🔧 Creating client with builder pattern...\n")
@@ -90,9 +90,50 @@ async def run_builder_pattern_example(
         print(f"  - eip155:84532 (Base Sepolia): {testnet_account.address}")
         print(f"  - eip155:11155111 (Sepolia): {testnet_account.address}")
 
-    # Register AVM networks if mnemonic provided
-    if avm_mnemonic:
-        avm_signer = AlgorandSigner.from_mnemonic(avm_mnemonic)
+    # Register AVM networks if private key provided
+    if avm_private_key:
+        import base64
+        import algosdk
+
+        # Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
+        secret_key = base64.b64decode(avm_private_key)
+        if len(secret_key) != 64:
+            raise ValueError("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key")
+        address = algosdk.encoding.encode_address(secret_key[32:])
+
+        # Implement ClientAvmSigner interface directly
+        class AlgorandSigner:
+            def __init__(self, sk: bytes, addr: str):
+                self._secret_key = sk
+                self._address = addr
+
+            @property
+            def address(self) -> str:
+                return self._address
+
+            def sign_transactions(
+                self,
+                unsigned_txns: list[bytes],
+                indexes_to_sign: list[int],
+            ) -> list[bytes | None]:
+                # algosdk Python API uses base64 strings, but the SDK protocol
+                # passes raw msgpack bytes. Convert at the boundary.
+                sk_b64 = base64.b64encode(self._secret_key).decode()
+                result = []
+                for i, txn_bytes in enumerate(unsigned_txns):
+                    if i in indexes_to_sign:
+                        txn = algosdk.encoding.msgpack_decode(
+                            base64.b64encode(txn_bytes).decode()
+                        )
+                        signed = txn.sign(sk_b64)
+                        result.append(
+                            base64.b64decode(algosdk.encoding.msgpack_encode(signed))
+                        )
+                    else:
+                        result.append(None)
+                return result
+
+        avm_signer = AlgorandSigner(secret_key, address)
 
         # Register Algorand networks - can use wildcards or specific networks
         client = (
@@ -145,20 +186,20 @@ async def main() -> None:
     """Main entry point."""
     evm_private_key = os.getenv("EVM_PRIVATE_KEY")
     svm_private_key = os.getenv("SVM_PRIVATE_KEY")
-    avm_mnemonic = os.getenv("AVM_MNEMONIC")
+    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     mainnet_key = os.getenv("MAINNET_PRIVATE_KEY")  # Optional: separate mainnet key
     testnet_key = os.getenv("TESTNET_PRIVATE_KEY")  # Optional: separate testnet key
     base_url = os.getenv("RESOURCE_SERVER_URL", "http://localhost:4021")
     endpoint_path = os.getenv("ENDPOINT_PATH", "/weather")
 
-    if not evm_private_key and not avm_mnemonic:
-        print("Error: At least one of EVM_PRIVATE_KEY or AVM_MNEMONIC is required")
+    if not evm_private_key and not avm_private_key:
+        print("Error: At least one of EVM_PRIVATE_KEY or AVM_PRIVATE_KEY is required")
         print("Please copy .env-local to .env and fill in the values.")
         sys.exit(1)
 
     url = f"{base_url}{endpoint_path}"
     await run_builder_pattern_example(
-        evm_private_key, svm_private_key, avm_mnemonic, url, mainnet_key, testnet_key
+        evm_private_key, svm_private_key, avm_private_key, url, mainnet_key, testnet_key
     )
 
 

@@ -24,13 +24,11 @@ This package provides three main components for handling x402 payments on Algora
 
 **Client:**
 - `ExactAvmClient` - V2 client implementation using ASA transfers
-- `toClientAvmSigner(account)` - Converts Algorand accounts to x402 signers
-- `ClientAvmSigner` - TypeScript type for client signers
+- `ClientAvmSigner` - TypeScript interface for client signers (implement with `algosdk`)
 
 **Facilitator:**
 - `ExactAvmFacilitator` - V2 facilitator for payment verification and settlement
-- `toFacilitatorAvmSigner(account)` - Converts Algorand accounts to facilitator signers
-- `FacilitatorAvmSigner` - TypeScript type for facilitator signers
+- `FacilitatorAvmSigner` - TypeScript interface for facilitator signers (implement with `algosdk`)
 
 **Service:**
 - `ExactAvmServer` - V2 service for building payment requirements
@@ -112,45 +110,35 @@ const client = x402Client.fromConfig({
 - `algorand-mainnet` - Mainnet
 - `algorand-testnet` - Testnet
 
-## Mnemonic Support
+## Signer Implementation
 
-The package supports both Algorand native 25-word mnemonics and BIP-39 24-word mnemonics:
+This package exports `ClientAvmSigner` and `FacilitatorAvmSigner` as TypeScript interfaces. You implement them directly using `algosdk`:
 
-```typescript
-import { mnemonicToAlgorandAccount, deriveAlgorandFromBip39 } from "@x402/avm";
-
-// Algorand native 25-word mnemonic
-const account1 = mnemonicToAlgorandAccount("word1 word2 ... word25");
-
-// BIP-39 24-word mnemonic (compatible with Lute, Pera, Defly wallets)
-const account2 = mnemonicToAlgorandAccount("word1 word2 ... word24");
-
-// Derive multiple accounts from BIP-39 mnemonic
-const account3 = deriveAlgorandFromBip39("word1 word2 ... word24", 1); // account index 1
-```
-
-BIP-39 mnemonics use **BIP32-Ed25519** derivation with path `m/44'/283'/0'/0/{index}`.
-
-### BIP32-Ed25519 HD Key Derivation
-
-For advanced use cases, the package exports the full BIP32-Ed25519 implementation:
+### Client Signer
 
 ```typescript
-import {
-  fromSeed,
-  deriveKey,
-  getPublicKey,
-  getAlgorandBIP44Path,
-  harden,
-  BIP32DerivationType
-} from "@x402/avm";
+import algosdk from "algosdk";
 
-// Derive from raw seed
-const rootKey = fromSeed(seed);
-const path = getAlgorandBIP44Path(0, 0); // m/44'/283'/0'/0/0
-const derivedKey = deriveKey(rootKey, path, BIP32DerivationType.Peikert);
-const publicKey = getPublicKey(derivedKey);
+// Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
+const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, "base64");
+const address = algosdk.encodeAddress(secretKey.slice(32));
+
+const avmSigner: ClientAvmSigner = {
+  address,
+  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+    return txns.map((txn, i) => {
+      if (indexesToSign && !indexesToSign.includes(i)) return null;
+      const decoded = algosdk.decodeUnsignedTransaction(txn);
+      const signed = algosdk.signTransaction(decoded, secretKey);
+      return signed.blob;
+    });
+  },
+};
 ```
+
+### Facilitator Signer
+
+See [facilitator example](../../examples/typescript/facilitator/) for a full `FacilitatorAvmSigner` implementation.
 
 ## Asset Support
 

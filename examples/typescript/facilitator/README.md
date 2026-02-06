@@ -8,7 +8,7 @@ Express.js facilitator service that verifies and settles payments on-chain for t
 - pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
 - EVM private key with Base Sepolia ETH for transaction fees
 - SVM private key with Solana Devnet SOL for transaction fees
-- AVM mnemonic (24-word BIP-39 or 25-word native) with Algorand Testnet ALGO for transaction fees
+- AVM private key (Base64-encoded 64-byte key) with Algorand Testnet ALGO for transaction fees
 
 ## Setup
 
@@ -22,7 +22,7 @@ and fill the following environment variables:
 
 - `EVM_PRIVATE_KEY` - Ethereum private key (optional)
 - `SVM_PRIVATE_KEY` - Solana private key (optional)
-- `AVM_MNEMONIC` - Algorand mnemonic phrase (supports both 24-word BIP-39 and 25-word native) (optional)
+- `AVM_PRIVATE_KEY` - Base64-encoded 64-byte Algorand private key (optional)
 - `PORT` - Server port (optional, defaults to 4022)
 
 At least one network credential must be configured. Only networks with configured keys will be enabled.

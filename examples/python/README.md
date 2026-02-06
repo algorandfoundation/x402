@@ -7,7 +7,7 @@ Examples for the x402 Python SDK with EVM, SVM, and AVM (Algorand) support.
 ```bash
 cd clients/httpx
 cp .env-local .env
-# Edit .env with your EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, and/or AVM_MNEMONIC
+# Edit .env with your EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, and/or AVM_PRIVATE_KEY
 uv sync
 uv run python main.py
 ```
@@ -41,7 +41,7 @@ uv run python main.py
 
 ### AVM (Algorand)
 - Network: `algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=` (Testnet)
-- Private key format: 24-word BIP-39 or 25-word Algorand native mnemonic
+- Private key format: Base64-encoded 64-byte key (32-byte seed + 32-byte public key)
 
 ## Environment Variables
 
@@ -50,7 +50,7 @@ uv run python main.py
 # At least one private key required
 EVM_PRIVATE_KEY=0x...
 SVM_PRIVATE_KEY=...base58...
-AVM_MNEMONIC=word1 word2 ... (24-word BIP-39 or 25-word Algorand)
+AVM_PRIVATE_KEY=...base64... (64-byte key: 32-byte seed + 32-byte public key)
 
 RESOURCE_SERVER_URL=http://localhost:4021
 ENDPOINT_PATH=/weather
@@ -76,7 +76,7 @@ EVM_RPC_URL=https://sepolia.base.org
 
 SVM_PRIVATE_KEY=...base58...
 
-AVM_MNEMONIC=word1 word2 ... (24-word BIP-39 or 25-word Algorand)
+AVM_PRIVATE_KEY=...base64... (64-byte key: 32-byte seed + 32-byte public key)
 ALGOD_SERVER=https://testnet-api.algonode.cloud
 ALGOD_TOKEN=
 ```

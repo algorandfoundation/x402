@@ -1765,6 +1765,7 @@ requires-dist = [
     { name = "flask", marker = "extra == 'flask'", specifier = ">=3.0.0" },
     { name = "httpx", marker = "extra == 'httpx'", specifier = ">=0.28.1" },
     { name = "jsonschema", marker = "extra == 'extensions'", specifier = ">=4.0.0" },
+    { name = "py-algorand-sdk", marker = "extra == 'avm'", specifier = ">=2.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "requests", marker = "extra == 'requests'", specifier = ">=2.31.0" },
     { name = "solana", marker = "extra == 'svm'", specifier = ">=0.36.0" },
@@ -1772,12 +1773,12 @@ requires-dist = [
     { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.27.0" },
     { name = "typing-extensions", specifier = ">=4.0.0" },
     { name = "web3", marker = "extra == 'evm'", specifier = ">=7.0.0" },
-    { name = "x402", extras = ["evm", "svm"], marker = "extra == 'mechanisms'" },
+    { name = "x402", extras = ["evm", "svm", "avm"], marker = "extra == 'mechanisms'" },
     { name = "x402", extras = ["flask", "fastapi"], marker = "extra == 'servers'" },
     { name = "x402", extras = ["httpx", "requests"], marker = "extra == 'clients'" },
-    { name = "x402", extras = ["httpx", "requests", "flask", "fastapi", "evm", "svm", "extensions"], marker = "extra == 'all'" },
+    { name = "x402", extras = ["httpx", "requests", "flask", "fastapi", "evm", "svm", "avm", "extensions"], marker = "extra == 'all'" },
 ]
-provides-extras = ["httpx", "requests", "flask", "fastapi", "evm", "svm", "extensions", "clients", "servers", "mechanisms", "all"]
+provides-extras = ["httpx", "requests", "flask", "fastapi", "evm", "svm", "avm", "extensions", "clients", "servers", "mechanisms", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1791,6 +1792,7 @@ dev = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jsonschema", specifier = ">=4.0.0" },
     { name = "mypy", specifier = ">=1.0.0" },
+    { name = "py-algorand-sdk", specifier = ">=2.0.0" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.21.0" },
     { name = "requests", specifier = ">=2.31.0" },
@@ -1798,6 +1800,7 @@ dev = [
     { name = "solana", specifier = ">=0.36.0" },
     { name = "solders", specifier = ">=0.27.0" },
     { name = "starlette", specifier = ">=0.27.0" },
+    { name = "towncrier", specifier = ">=24.8.0,<25" },
     { name = "web3", specifier = ">=7.0.0" },
 ]
 

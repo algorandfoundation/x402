@@ -2,18 +2,39 @@
  * @module @x402/avm - x402 Payment Protocol AVM (Algorand) Implementation
  *
  * This module provides the Algorand-specific implementation of the x402 payment protocol.
+ *
+ * ## Architecture
+ *
+ * This package provides interfaces and utilities. Signer implementations should be
+ * created by integrators using algosdk directly. See the examples for reference implementations.
+ *
+ * @example Client signer implementation:
+ * ```typescript
+ * import algosdk from "algosdk";
+ * import type { ClientAvmSigner } from "@x402/avm";
+ *
+ * const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, 'base64');
+ * const address = algosdk.encodeAddress(secretKey.slice(32));
+ *
+ * const signer: ClientAvmSigner = {
+ *   address,
+ *   signTransactions: async (txns, indexesToSign) => {
+ *     return txns.map((txn, i) => {
+ *       if (indexesToSign && !indexesToSign.includes(i)) return null;
+ *       const decoded = algosdk.decodeUnsignedTransaction(txn);
+ *       const signed = algosdk.signTransaction(decoded, secretKey);
+ *       return signed.blob;
+ *     });
+ *   },
+ * };
+ * ```
  */
 
 // Exact scheme client
 export { ExactAvmScheme } from "./exact";
 
-// Signers
-export {
-  toClientAvmSigner,
-  toFacilitatorAvmSigner,
-  toMultiAccountFacilitatorAvmSigner,
-  isAvmSignerWallet,
-} from "./signer";
+// Signer interfaces (implementations provided by integrator)
+export { isAvmSignerWallet } from "./signer";
 export type {
   ClientAvmSigner,
   ClientAvmConfig,
@@ -87,29 +108,3 @@ export {
   getTransactionId,
   hasSignature,
 } from "./utils";
-
-// Mnemonic Utilities (BIP-39 and Algorand native support)
-export {
-  mnemonicToAlgorandAccount,
-  deriveAlgorandFromBip39,
-  detectMnemonicType,
-  isValidMnemonic,
-  getMnemonicWordCount,
-  signTransactionWithExtendedKey,
-  ALGORAND_DERIVATION_PATH,
-} from "./mnemonic";
-export type { MnemonicType, ExtendedAlgorandAccount } from "./mnemonic";
-
-// BIP32-Ed25519 HD Key Derivation
-export {
-  fromSeed,
-  deriveKey,
-  deriveChildNodePrivate,
-  deriveChildNodePublic,
-  getPublicKey,
-  getAlgorandBIP44Path,
-  harden,
-  signWithExtendedKey,
-  BIP32DerivationType,
-  HARDENED_OFFSET,
-} from "./bip32-ed25519";

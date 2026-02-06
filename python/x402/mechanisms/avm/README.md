@@ -21,13 +21,37 @@ Three components for handling x402 payments on Algorand:
 ### Client
 
 ```python
+import base64
+import algosdk
 from x402 import x402Client
 from x402.mechanisms.avm.exact import ExactAvmScheme
-from x402.mechanisms.avm import AlgorandSigner
 
-# Create signer from mnemonic
-signer = AlgorandSigner.from_mnemonic("word1 word2 ... word25")
+# Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
+secret_key = base64.b64decode(os.environ["AVM_PRIVATE_KEY"])
+address = algosdk.encoding.encode_address(secret_key[32:])
 
+# Implement ClientAvmSigner protocol
+class MyAlgorandSigner:
+    def __init__(self, sk: bytes, addr: str):
+        self._secret_key = sk
+        self._address = addr
+
+    @property
+    def address(self) -> str:
+        return self._address
+
+    def sign_transactions(self, unsigned_txns, indexes_to_sign):
+        result = []
+        for i, txn_bytes in enumerate(unsigned_txns):
+            if i in indexes_to_sign:
+                txn = algosdk.encoding.msgpack_decode(txn_bytes)
+                signed = txn.sign(self._secret_key)
+                result.append(algosdk.encoding.msgpack_encode(signed))
+            else:
+                result.append(None)
+        return result
+
+signer = MyAlgorandSigner(secret_key, address)
 client = x402Client()
 client.register("algorand:*", ExactAvmScheme(signer=signer))
 
@@ -47,13 +71,20 @@ server.register("algorand:*", ExactAvmServerScheme())
 ### Facilitator
 
 ```python
+import base64
+import algosdk
 from x402 import x402Facilitator
 from x402.mechanisms.avm.exact import ExactAvmFacilitatorScheme
-from x402.mechanisms.avm import FacilitatorAlgorandSigner, ALGORAND_MAINNET_CAIP2
+from x402.mechanisms.avm import ALGORAND_MAINNET_CAIP2
 
-# Create facilitator signer and add fee payer accounts
-signer = FacilitatorAlgorandSigner()
-signer.add_account(private_key)
+# Decode Base64 private key and create Algod client
+secret_key = base64.b64decode(os.environ["AVM_PRIVATE_KEY"])
+address = algosdk.encoding.encode_address(secret_key[32:])
+algod_client = algosdk.v2client.algod.AlgodClient("", "https://mainnet-api.algonode.cloud")
+
+# Implement FacilitatorAvmSigner protocol (see examples/python/facilitator for full impl)
+# Must implement: get_addresses, sign_transaction, sign_group,
+#                 simulate_group, send_group, confirm_transaction
 
 facilitator = x402Facilitator()
 facilitator.register(
@@ -80,10 +111,8 @@ facilitator.register(
 
 | Export | Description |
 |--------|-------------|
-| `ClientAvmSigner` | Protocol for client signers |
-| `FacilitatorAvmSigner` | Protocol for facilitator signers |
-| `AlgorandSigner` | Client signer using Algorand private key |
-| `FacilitatorAlgorandSigner` | Facilitator signer with Algod client |
+| `ClientAvmSigner` | Protocol for client signers (implement with algosdk) |
+| `FacilitatorAvmSigner` | Protocol for facilitator signers (implement with algosdk) |
 | `NETWORK_CONFIGS` | Network configuration mapping |
 | `V1_NETWORKS` | List of V1 network names |
 | `ALGORAND_MAINNET_CAIP2` | Mainnet CAIP-2 identifier |
@@ -99,53 +128,6 @@ facilitator.register(
 **V1 Networks** (legacy names):
 - `algorand-mainnet` - Mainnet
 - `algorand-testnet` - Testnet
-
-## Mnemonic Support
-
-The package supports both Algorand native 25-word mnemonics and BIP-39 24-word mnemonics:
-
-```python
-from x402.mechanisms.avm import mnemonic_to_algorand_account, derive_algorand_from_bip39
-
-# Algorand native 25-word mnemonic
-account1 = mnemonic_to_algorand_account("word1 word2 ... word25")
-
-# BIP-39 24-word mnemonic (compatible with Lute, Pera, Defly wallets)
-account2 = mnemonic_to_algorand_account("word1 word2 ... word24")
-
-# Derive multiple accounts from BIP-39 mnemonic
-account3 = derive_algorand_from_bip39("word1 word2 ... word24", account_index=1)
-```
-
-BIP-39 mnemonics use **BIP32-Ed25519** derivation with path `m/44'/283'/0'/0/{index}`.
-
-### BIP32-Ed25519 HD Key Derivation
-
-For advanced use cases, the package exports the full BIP32-Ed25519 implementation:
-
-```python
-from x402.mechanisms.avm import (
-    from_seed,
-    derive_key,
-    get_public_key,
-    get_algorand_bip44_path,
-    harden,
-    sign_with_extended_key,
-    BIP32DerivationType
-)
-
-# Derive from raw seed
-root_key = from_seed(seed)
-path = get_algorand_bip44_path(0, 0)  # m/44'/283'/0'/0/0
-derived_key = derive_key(root_key, path, BIP32DerivationType.PEIKERT)
-public_key = get_public_key(derived_key)
-
-# Sign a message with the derived key
-# Note: For BIP32-Ed25519 keys, use sign_with_extended_key instead of algosdk's
-# standard signing, which re-hashes the key and produces incorrect signatures.
-message = b"TX" + transaction_bytes  # Algorand transaction signing prefix
-signature = sign_with_extended_key(derived_key, message)
-```
 
 ## Asset Support
 

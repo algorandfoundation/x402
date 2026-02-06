@@ -17,13 +17,13 @@ import { x402Client } from "@x402/fetch";
  *
  * @param evmPrivateKey - The EVM private key for signing (optional)
  * @param svmPrivateKey - The SVM private key for signing (optional)
- * @param avmMnemonic - The AVM mnemonic for signing (optional)
+ * @param avmPrivateKey - Base64-encoded 64-byte Algorand private key (optional)
  * @param url - The URL to make the request to
  */
 export async function runHooksExample(
   evmPrivateKey: `0x${string}` | undefined,
   svmPrivateKey: string | undefined,
-  avmMnemonic: string | undefined,
+  avmPrivateKey: string | undefined,
   url: string,
 ): Promise<void> {
   console.log("🔧 Creating client with payment lifecycle hooks...\n");
@@ -53,13 +53,30 @@ export async function runHooksExample(
   }
 
   // Conditionally add AVM (Algorand) support
-  if (avmMnemonic) {
+  if (avmPrivateKey) {
     const { ExactAvmScheme } = await import("@x402/avm/exact/client");
-    const { toClientAvmSigner, mnemonicToAlgorandAccount } = await import("@x402/avm");
+    const algosdk = await import("algosdk");
 
-    // Supports both 24-word BIP-39 and 25-word Algorand native mnemonics
-    const avmAccount = mnemonicToAlgorandAccount(avmMnemonic);
-    const avmSigner = toClientAvmSigner(avmAccount);
+    // Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
+    const secretKey = Buffer.from(avmPrivateKey, "base64");
+    if (secretKey.length !== 64) {
+      throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
+    }
+    const address = algosdk.encodeAddress(secretKey.slice(32));
+
+    // Implement ClientAvmSigner interface directly
+    const avmSigner = {
+      address,
+      signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+        return txns.map((txn, i) => {
+          if (indexesToSign && !indexesToSign.includes(i)) return null;
+          const decoded = algosdk.decodeUnsignedTransaction(txn);
+          const signed = algosdk.signTransaction(decoded, secretKey);
+          return signed.blob;
+        });
+      },
+    };
+
     client.register("algorand:*", new ExactAvmScheme(avmSigner));
     enabledNetworks.push("AVM (algorand:*)");
   }

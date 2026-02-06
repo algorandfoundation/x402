@@ -1249,6 +1249,9 @@ importers:
       '@x402/svm':
         specifier: workspace:*
         version: link:../../../../typescript/packages/mechanisms/svm
+      algosdk:
+        specifier: ^3.5.2
+        version: 3.5.2
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -1307,6 +1310,9 @@ importers:
       '@x402/svm':
         specifier: workspace:*
         version: link:../../../../typescript/packages/mechanisms/svm
+      algosdk:
+        specifier: ^3.5.2
+        version: 3.5.2
       axios:
         specifier: ^1.13.2
         version: 1.13.2
@@ -1356,6 +1362,9 @@ importers:
       '@solana/kit':
         specifier: ^2.1.1
         version: 2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.2)(ws@8.18.3(bufferutil@4.0.9)(utf-8-validate@5.0.10))
+      '@x402/avm':
+        specifier: workspace:*
+        version: link:../../../../typescript/packages/mechanisms/avm
       '@x402/core':
         specifier: workspace:*
         version: link:../../../../typescript/packages/core
@@ -1365,6 +1374,9 @@ importers:
       '@x402/svm':
         specifier: workspace:*
         version: link:../../../../typescript/packages/mechanisms/svm
+      algosdk:
+        specifier: ^3.5.2
+        version: 3.5.2
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -1423,6 +1435,9 @@ importers:
       '@x402/svm':
         specifier: workspace:*
         version: link:../../../../typescript/packages/mechanisms/svm
+      algosdk:
+        specifier: ^3.5.2
+        version: 3.5.2
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -1484,6 +1499,9 @@ importers:
       '@x402/svm':
         specifier: workspace:*
         version: link:../../../../typescript/packages/mechanisms/svm
+      algosdk:
+        specifier: ^3.5.2
+        version: 3.5.2
       axios:
         specifier: ^1.13.2
         version: 1.13.2
@@ -1548,6 +1566,9 @@ importers:
       '@x402/svm':
         specifier: workspace:*
         version: link:../../../typescript/packages/mechanisms/svm
+      algosdk:
+        specifier: ^3.5.2
+        version: 3.5.2
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
@@ -24221,7 +24242,7 @@ snapshots:
       tinyglobby: 0.2.15
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.48.0(eslint@9.33.0(jiti@2.6.1))(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1)(eslint@9.33.0(jiti@2.6.1))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.40.0(eslint@9.33.0(jiti@2.6.1))(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1)(eslint@9.33.0(jiti@2.6.1))
     transitivePeerDependencies:
       - supports-color
 

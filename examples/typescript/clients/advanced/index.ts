@@ -7,7 +7,7 @@ config();
 
 const evmPrivateKey = process.env.EVM_PRIVATE_KEY as `0x${string}`;
 const svmPrivateKey = process.env.SVM_PRIVATE_KEY as string;
-const avmMnemonic = process.env.AVM_MNEMONIC as string;
+const avmPrivateKey = process.env.AVM_PRIVATE_KEY as string;
 const baseURL = process.env.RESOURCE_SERVER_URL || "http://localhost:4021";
 const endpointPath = process.env.ENDPOINT_PATH || "/weather";
 const url = `${baseURL}${endpointPath}`;
@@ -24,7 +24,7 @@ const url = `${baseURL}${endpointPath}`;
  * To run this example, you need to set at least one of the following environment variables:
  * - EVM_PRIVATE_KEY: The private key of the EVM signer
  * - SVM_PRIVATE_KEY: The private key of the SVM signer
- * - AVM_MNEMONIC: The 25-word mnemonic phrase for the Algorand signer
+ * - AVM_PRIVATE_KEY: Base64-encoded 64-byte Algorand private key
  *
  * Usage:
  *   pnpm start builder-pattern
@@ -37,22 +37,22 @@ async function main(): Promise<void> {
   console.log(`\n🚀 Running advanced example: ${pattern}\n`);
 
   // Validate at least one network is configured
-  if (!evmPrivateKey && !svmPrivateKey && !avmMnemonic) {
-    console.error("❌ At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_MNEMONIC must be set");
+  if (!evmPrivateKey && !svmPrivateKey && !avmPrivateKey) {
+    console.error("❌ At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY must be set");
     process.exit(1);
   }
 
   switch (pattern) {
     case "builder-pattern":
-      await runBuilderPatternExample(evmPrivateKey, svmPrivateKey, avmMnemonic, url);
+      await runBuilderPatternExample(evmPrivateKey, svmPrivateKey, avmPrivateKey, url);
       break;
 
     case "hooks":
-      await runHooksExample(evmPrivateKey, svmPrivateKey, avmMnemonic, url);
+      await runHooksExample(evmPrivateKey, svmPrivateKey, avmPrivateKey, url);
       break;
 
     case "preferred-network":
-      await runPreferredNetworkExample(evmPrivateKey, svmPrivateKey, avmMnemonic, url);
+      await runPreferredNetworkExample(evmPrivateKey, svmPrivateKey, avmPrivateKey, url);
       break;
 
     default:

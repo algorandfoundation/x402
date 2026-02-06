@@ -57,13 +57,14 @@ export class ExactAvmSchemeV1 implements SchemeNetworkClient {
     const caip2Network = V1_TO_CAIP2[v1Network] ?? v1Network;
 
     // Get Algod client
-    const algodClient =
+    const algodClient = (
       this.config?.algodClient ??
       createAlgodClient(
         caip2Network as Network,
         this.config?.algodUrl ?? DEFAULT_ALGOD_TESTNET,
         this.config?.algodToken,
-      );
+      )
+    ) as algosdk.Algodv2;
 
     // Get suggested params
     const suggestedParams = await algodClient.getTransactionParams().do();

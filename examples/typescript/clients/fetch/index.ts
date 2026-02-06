@@ -5,14 +5,14 @@ config();
 
 const evmPrivateKey = process.env.EVM_PRIVATE_KEY as `0x${string}`;
 const svmPrivateKey = process.env.SVM_PRIVATE_KEY as string;
-const avmMnemonic = process.env.AVM_MNEMONIC as string;
+const avmPrivateKey = process.env.AVM_PRIVATE_KEY as string;
 const baseURL = process.env.RESOURCE_SERVER_URL || "http://localhost:4021";
 const endpointPath = process.env.ENDPOINT_PATH || "/weather";
 const url = `${baseURL}${endpointPath}`;
 
 // Validate at least one credential is configured
-if (!evmPrivateKey && !svmPrivateKey && !avmMnemonic) {
-  console.error("❌ At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_MNEMONIC must be set");
+if (!evmPrivateKey && !svmPrivateKey && !avmPrivateKey) {
+  console.error("❌ At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY must be set");
   process.exit(1);
 }
 
@@ -25,7 +25,7 @@ if (!evmPrivateKey && !svmPrivateKey && !avmMnemonic) {
  * Environment variables (at least one required):
  * - EVM_PRIVATE_KEY: The private key of the EVM signer
  * - SVM_PRIVATE_KEY: The private key of the SVM signer
- * - AVM_MNEMONIC: Algorand mnemonic (24-word BIP-39 or 25-word Algorand native)
+ * - AVM_PRIVATE_KEY: Base64-encoded 64-byte Algorand private key
  */
 async function main(): Promise<void> {
   const client = new x402Client();
@@ -55,16 +55,33 @@ async function main(): Promise<void> {
   }
 
   // Conditionally register AVM (Algorand) support
-  if (avmMnemonic) {
+  if (avmPrivateKey) {
     const { registerExactAvmScheme } = await import("@x402/avm/exact/client");
-    const { toClientAvmSigner, mnemonicToAlgorandAccount } = await import("@x402/avm");
+    const algosdk = await import("algosdk");
 
-    // Supports both 24-word BIP-39 and 25-word Algorand native mnemonics
-    const avmAccount = mnemonicToAlgorandAccount(avmMnemonic);
-    const avmSigner = toClientAvmSigner(avmAccount);
+    // Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
+    const secretKey = Buffer.from(avmPrivateKey, "base64");
+    if (secretKey.length !== 64) {
+      throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
+    }
+    const address = algosdk.encodeAddress(secretKey.slice(32));
+
+    // Implement ClientAvmSigner interface directly
+    const avmSigner = {
+      address,
+      signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+        return txns.map((txn, i) => {
+          if (indexesToSign && !indexesToSign.includes(i)) return null;
+          const decoded = algosdk.decodeUnsignedTransaction(txn);
+          const signed = algosdk.signTransaction(decoded, secretKey);
+          return signed.blob;
+        });
+      },
+    };
+
     registerExactAvmScheme(client, { signer: avmSigner });
     enabledNetworks.push("AVM");
-    console.info(`AVM signer: ${avmAccount.addr.toString()}`);
+    console.info(`AVM signer: ${address}`);
   }
 
   console.info(`Enabled networks: ${enabledNetworks.join(", ")}\n`);

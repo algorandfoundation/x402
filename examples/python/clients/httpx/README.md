@@ -1,6 +1,6 @@
 # x402 httpx Client Example
 
-This example demonstrates how to use the x402 v2 SDK with httpx (async) to make requests to 402-protected endpoints with support for both EVM (Ethereum) and SVM (Solana) payments.
+This example demonstrates how to use the x402 v2 SDK with httpx (async) to make requests to 402-protected endpoints with support for EVM (Ethereum), SVM (Solana), and AVM (Algorand) payments.
 
 ## Setup
 
@@ -29,9 +29,10 @@ uv run python main.py
 The example demonstrates the complete x402 payment flow:
 
 1. **Create x402 client** - Set up the payment client
-2. **Register payment schemes** - Enable EVM and/or SVM payments:
+2. **Register payment schemes** - Enable EVM, SVM, and/or AVM payments:
    - `register_exact_evm_client` for Ethereum-based payments
    - `register_exact_svm_client` for Solana-based payments
+   - `register_exact_avm_client` for Algorand-based payments
 3. **Make request** - The `x402HttpxClient` automatically handles 402 responses:
    - Intercepts 402 Payment Required responses
    - Creates and signs payment payload
@@ -49,6 +50,7 @@ from x402.mechanisms.evm import EthAccountSigner
 from x402.mechanisms.evm.exact.register import register_exact_evm_client
 from x402.mechanisms.svm import KeypairSigner
 from x402.mechanisms.svm.exact.register import register_exact_svm_client
+from x402.mechanisms.avm.exact.register import register_exact_avm_client
 
 # Setup
 client = x402Client()
@@ -60,6 +62,9 @@ register_exact_evm_client(client, EthAccountSigner(account))
 # Register SVM (Solana) payments
 svm_signer = KeypairSigner.from_base58(svm_private_key)
 register_exact_svm_client(client, svm_signer)
+
+# Register AVM (Algorand) payments
+register_exact_avm_client(client, avm_signer)  # See main.py for signer implementation
 
 # Make request - payment handling is automatic
 async with x402HttpxClient(client) as http:
@@ -79,10 +84,11 @@ async with x402HttpxClient(client) as http:
 |----------|-------------|
 | `EVM_PRIVATE_KEY` | Your EVM private key (with or without 0x prefix) |
 | `SVM_PRIVATE_KEY` | Your Solana private key (base58 encoded) |
+| `AVM_PRIVATE_KEY` | Base64-encoded 64-byte Algorand private key |
 | `RESOURCE_SERVER_URL` | Base URL of the x402-protected server |
 | `ENDPOINT_PATH` | Path to the protected endpoint |
 
-**Note:** At least one of `EVM_PRIVATE_KEY` or `SVM_PRIVATE_KEY` must be provided.
+**Note:** At least one of `EVM_PRIVATE_KEY`, `SVM_PRIVATE_KEY`, or `AVM_PRIVATE_KEY` must be provided.
 
 ## Learn More
 

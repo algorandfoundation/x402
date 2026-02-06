@@ -36,59 +36,59 @@ def validate_environment() -> tuple[str | None, str | None, str | None, str]:
     """Validate required environment variables.
 
     Returns:
-        Tuple of (evm_private_key, svm_private_key, avm_mnemonic, url).
+        Tuple of (evm_private_key, svm_private_key, avm_private_key, url).
 
     Raises:
         SystemExit: If required environment variables are missing.
     """
     evm_private_key = os.getenv("EVM_PRIVATE_KEY")
     svm_private_key = os.getenv("SVM_PRIVATE_KEY")
-    avm_mnemonic = os.getenv("AVM_MNEMONIC")
+    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     base_url = os.getenv("RESOURCE_SERVER_URL", "http://localhost:4021")
     endpoint_path = os.getenv("ENDPOINT_PATH", "/weather")
 
-    if not evm_private_key and not svm_private_key and not avm_mnemonic:
-        print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_MNEMONIC required")
+    if not evm_private_key and not svm_private_key and not avm_private_key:
+        print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY required")
         print("Please copy .env-local to .env and fill in the values.")
         sys.exit(1)
 
-    return evm_private_key, svm_private_key, avm_mnemonic, f"{base_url}{endpoint_path}"
+    return evm_private_key, svm_private_key, avm_private_key, f"{base_url}{endpoint_path}"
 
 
 async def run_hooks_example(
     evm_private_key: str | None,
     svm_private_key: str | None,
-    avm_mnemonic: str | None,
+    avm_private_key: str | None,
     url: str,
 ) -> None:
     """Run the hooks example."""
     from hooks import run_hooks_example
 
-    await run_hooks_example(evm_private_key, svm_private_key, avm_mnemonic, url)
+    await run_hooks_example(evm_private_key, svm_private_key, avm_private_key, url)
 
 
 async def run_preferred_network_example(
     evm_private_key: str | None,
     svm_private_key: str | None,
-    avm_mnemonic: str | None,
+    avm_private_key: str | None,
     url: str,
 ) -> None:
     """Run the preferred network example."""
     from preferred_network import run_preferred_network_example
 
-    await run_preferred_network_example(evm_private_key, svm_private_key, avm_mnemonic, url)
+    await run_preferred_network_example(evm_private_key, svm_private_key, avm_private_key, url)
 
 
 async def run_builder_pattern_example(
     evm_private_key: str | None,
     svm_private_key: str | None,
-    avm_mnemonic: str | None,
+    avm_private_key: str | None,
     url: str,
 ) -> None:
     """Run the builder pattern example."""
     from builder_pattern import run_builder_pattern_example
 
-    await run_builder_pattern_example(evm_private_key, svm_private_key, avm_mnemonic, url)
+    await run_builder_pattern_example(evm_private_key, svm_private_key, avm_private_key, url)
 
 
 EXAMPLE_RUNNERS = {
@@ -102,7 +102,7 @@ async def run_example(
     name: str,
     evm_private_key: str | None,
     svm_private_key: str | None,
-    avm_mnemonic: str | None,
+    avm_private_key: str | None,
     url: str,
 ) -> None:
     """Run a specific example.
@@ -111,7 +111,7 @@ async def run_example(
         name: Name of the example to run.
         evm_private_key: EVM private key for signing.
         svm_private_key: SVM private key for signing.
-        avm_mnemonic: AVM mnemonic for signing.
+        avm_private_key: AVM private key for signing.
         url: URL to make the request to.
     """
     print(f"\n{'=' * 60}")
@@ -120,13 +120,13 @@ async def run_example(
     print(f"{'=' * 60}\n")
 
     runner = EXAMPLE_RUNNERS[name]
-    await runner(evm_private_key, svm_private_key, avm_mnemonic, url)
+    await runner(evm_private_key, svm_private_key, avm_private_key, url)
 
 
 async def run_all_examples(
     evm_private_key: str | None,
     svm_private_key: str | None,
-    avm_mnemonic: str | None,
+    avm_private_key: str | None,
     url: str,
 ) -> None:
     """Run all examples sequentially.
@@ -134,12 +134,12 @@ async def run_all_examples(
     Args:
         evm_private_key: EVM private key for signing.
         svm_private_key: SVM private key for signing.
-        avm_mnemonic: AVM mnemonic for signing.
+        avm_private_key: AVM private key for signing.
         url: URL to make the request to.
     """
     for name in EXAMPLES:
         try:
-            await run_example(name, evm_private_key, svm_private_key, avm_mnemonic, url)
+            await run_example(name, evm_private_key, svm_private_key, avm_private_key, url)
         except Exception as e:
             print(f"\n❌ Example '{name}' failed: {e}")
         print()
@@ -180,12 +180,12 @@ Available examples:
         print(f"\n  {'all':20} Run all examples sequentially")
         return
 
-    evm_private_key, svm_private_key, avm_mnemonic, url = validate_environment()
+    evm_private_key, svm_private_key, avm_private_key, url = validate_environment()
 
     if args.example == "all":
-        asyncio.run(run_all_examples(evm_private_key, svm_private_key, avm_mnemonic, url))
+        asyncio.run(run_all_examples(evm_private_key, svm_private_key, avm_private_key, url))
     else:
-        asyncio.run(run_example(args.example, evm_private_key, svm_private_key, avm_mnemonic, url))
+        asyncio.run(run_example(args.example, evm_private_key, svm_private_key, avm_private_key, url))
 
 
 if __name__ == "__main__":

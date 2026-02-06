@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
-    "x402[evm,svm]",
+    "x402[evm,svm,avm]",
 ]
 
 [build-system]

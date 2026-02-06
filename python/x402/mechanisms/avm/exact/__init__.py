@@ -11,16 +11,16 @@ Usage:
         register_exact_avm_facilitator,
     )
 
-    # Client-side
-    from x402.mechanisms.avm import AlgorandSigner
-    signer = AlgorandSigner.from_mnemonic("word1 word2 ... word25")
+    # Client-side: implement ClientAvmSigner protocol with algosdk
+    import base64, algosdk
+    secret_key = base64.b64decode(os.environ["AVM_PRIVATE_KEY"])
+    address = algosdk.encoding.encode_address(secret_key[32:])
+    # ... implement sign_transactions method (see examples)
     client = x402Client()
     register_exact_avm_client(client, signer)
 
-    # Facilitator-side
-    from x402.mechanisms.avm import FacilitatorAlgorandSigner
-    fac_signer = FacilitatorAlgorandSigner()
-    fac_signer.add_account(private_key)
+    # Facilitator-side: implement FacilitatorAvmSigner protocol with algosdk
+    # ... implement get_addresses, sign_transaction, simulate_group, etc. (see examples)
     facilitator = x402Facilitator()
     register_exact_avm_facilitator(facilitator, fac_signer, networks)
     ```

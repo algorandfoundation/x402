@@ -10,7 +10,7 @@ This is an example client that demonstrates how to use the x402 payment protocol
 - Valid credentials for at least one network:
   - EVM: Private key (hex string starting with 0x)
   - SVM: Private key (base58 encoded)
-  - AVM: Algorand mnemonic phrase (supports both 24-word BIP-39 and 25-word Algorand native mnemonics)
+  - AVM: Base64-encoded 64-byte Algorand private key
 - Claude Desktop with MCP support
 
 ## Setup
@@ -38,7 +38,7 @@ cd clients/mcp
       "env": {
         "EVM_PRIVATE_KEY": "<private key of a wallet with USDC on Base Sepolia>",
         "SVM_PRIVATE_KEY": "<base58-encoded private key of a Solana wallet with USDC on Devnet>",
-        "AVM_MNEMONIC": "<Algorand mnemonic (24-word BIP-39 or 25-word native) for a wallet with USDC on Testnet>",
+        "AVM_PRIVATE_KEY": "<Base64-encoded 64-byte Algorand private key for a wallet with USDC on Testnet>",
         "RESOURCE_SERVER_URL": "http://localhost:4021",
         "ENDPOINT_PATH": "/weather"
       }
@@ -47,7 +47,7 @@ cd clients/mcp
 }
 ```
 
-Configure at least one of `EVM_PRIVATE_KEY`, `SVM_PRIVATE_KEY`, or `AVM_MNEMONIC`. Only networks with configured credentials will be enabled.
+Configure at least one of `EVM_PRIVATE_KEY`, `SVM_PRIVATE_KEY`, or `AVM_PRIVATE_KEY`. Only networks with configured credentials will be enabled.
 
 3. Make sure your x402 server is running at the URL specified in `RESOURCE_SERVER_URL` (e.g., the example express server at `examples/typescript/servers/express`)
 
@@ -93,11 +93,22 @@ if (SVM_PRIVATE_KEY) {
 }
 
 // Conditionally register AVM scheme
-if (AVM_MNEMONIC) {
+if (AVM_PRIVATE_KEY) {
   const { registerExactAvmScheme } = await import("@x402/avm/exact/client");
-  const { toClientAvmSigner, mnemonicToAlgorandAccount } = await import("@x402/avm");
-  const avmAccount = mnemonicToAlgorandAccount(AVM_MNEMONIC);
-  const avmSigner = toClientAvmSigner(avmAccount);
+  const algosdk = await import("algosdk");
+  const secretKey = Buffer.from(AVM_PRIVATE_KEY, "base64");
+  const address = algosdk.encodeAddress(secretKey.slice(32));
+  const avmSigner = {
+    address,
+    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+      return txns.map((txn, i) => {
+        if (indexesToSign && !indexesToSign.includes(i)) return null;
+        const decoded = algosdk.decodeUnsignedTransaction(txn);
+        const signed = algosdk.signTransaction(decoded, secretKey);
+        return signed.blob;
+      });
+    },
+  };
   registerExactAvmScheme(client, { signer: avmSigner });
 }
 

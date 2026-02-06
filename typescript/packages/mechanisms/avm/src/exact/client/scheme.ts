@@ -53,13 +53,14 @@ export class ExactAvmScheme implements SchemeNetworkClient {
     const { amount, asset, payTo, network, extra } = paymentRequirements;
 
     // Get Algod client
-    const algodClient =
+    const algodClient = (
       this.config?.algodClient ??
       createAlgodClient(
         network,
         this.config?.algodUrl ?? DEFAULT_ALGOD_TESTNET,
         this.config?.algodToken,
-      );
+      )
+    ) as algosdk.Algodv2;
 
     // Get suggested params
     const suggestedParams = await algodClient.getTransactionParams().do();

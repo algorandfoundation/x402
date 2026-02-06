@@ -27,7 +27,6 @@ from x402.mechanisms.evm import EthAccountSigner
 from x402.mechanisms.evm.exact.register import register_exact_evm_client
 from x402.mechanisms.svm import KeypairSigner
 from x402.mechanisms.svm.exact.register import register_exact_svm_client
-from x402.mechanisms.avm import AlgorandSigner
 from x402.mechanisms.avm.exact.register import register_exact_avm_client
 from x402.schemas import (
     AbortResult,
@@ -96,7 +95,7 @@ async def payment_creation_failure_hook(
 async def run_hooks_example(
     evm_private_key: str | None,
     svm_private_key: str | None,
-    avm_mnemonic: str | None,
+    avm_private_key: str | None,
     url: str,
 ) -> None:
     """Run the hooks example.
@@ -104,11 +103,11 @@ async def run_hooks_example(
     Args:
         evm_private_key: EVM private key for signing.
         svm_private_key: SVM private key for signing.
-        avm_mnemonic: AVM mnemonic for signing.
+        avm_private_key: Base64-encoded 64-byte Algorand private key.
         url: URL to make the request to.
     """
-    if not evm_private_key and not svm_private_key and not avm_mnemonic:
-        print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_MNEMONIC required")
+    if not evm_private_key and not svm_private_key and not avm_private_key:
+        print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY required")
         sys.exit(1)
 
     print("🔧 Creating client with payment lifecycle hooks...\n")
@@ -128,9 +127,50 @@ async def run_hooks_example(
         register_exact_svm_client(client, svm_signer)
         print(f"SVM wallet address: {svm_signer.address}")
 
-    # Register AVM payment scheme if mnemonic provided
-    if avm_mnemonic:
-        avm_signer = AlgorandSigner.from_mnemonic(avm_mnemonic)
+    # Register AVM payment scheme if private key provided
+    if avm_private_key:
+        import base64
+        import algosdk
+
+        # Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
+        secret_key = base64.b64decode(avm_private_key)
+        if len(secret_key) != 64:
+            raise ValueError("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key")
+        address = algosdk.encoding.encode_address(secret_key[32:])
+
+        # Implement ClientAvmSigner interface directly
+        class AlgorandSigner:
+            def __init__(self, sk: bytes, addr: str):
+                self._secret_key = sk
+                self._address = addr
+
+            @property
+            def address(self) -> str:
+                return self._address
+
+            def sign_transactions(
+                self,
+                unsigned_txns: list[bytes],
+                indexes_to_sign: list[int],
+            ) -> list[bytes | None]:
+                # algosdk Python API uses base64 strings, but the SDK protocol
+                # passes raw msgpack bytes. Convert at the boundary.
+                sk_b64 = base64.b64encode(self._secret_key).decode()
+                result = []
+                for i, txn_bytes in enumerate(unsigned_txns):
+                    if i in indexes_to_sign:
+                        txn = algosdk.encoding.msgpack_decode(
+                            base64.b64encode(txn_bytes).decode()
+                        )
+                        signed = txn.sign(sk_b64)
+                        result.append(
+                            base64.b64decode(algosdk.encoding.msgpack_encode(signed))
+                        )
+                    else:
+                        result.append(None)
+                return result
+
+        avm_signer = AlgorandSigner(secret_key, address)
         register_exact_avm_client(client, avm_signer)
         print(f"AVM wallet address: {avm_signer.address}")
 
@@ -169,17 +209,17 @@ async def main() -> None:
     """Main entry point."""
     evm_private_key = os.getenv("EVM_PRIVATE_KEY")
     svm_private_key = os.getenv("SVM_PRIVATE_KEY")
-    avm_mnemonic = os.getenv("AVM_MNEMONIC")
+    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     base_url = os.getenv("RESOURCE_SERVER_URL", "http://localhost:4021")
     endpoint_path = os.getenv("ENDPOINT_PATH", "/weather")
 
-    if not evm_private_key and not svm_private_key and not avm_mnemonic:
-        print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_MNEMONIC required")
+    if not evm_private_key and not svm_private_key and not avm_private_key:
+        print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY required")
         print("Please copy .env-local to .env and fill in the values.")
         sys.exit(1)
 
     url = f"{base_url}{endpoint_path}"
-    await run_hooks_example(evm_private_key, svm_private_key, avm_mnemonic, url)
+    await run_hooks_example(evm_private_key, svm_private_key, avm_private_key, url)
 
 
 if __name__ == "__main__":

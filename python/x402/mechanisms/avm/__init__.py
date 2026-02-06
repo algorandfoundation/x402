@@ -10,8 +10,6 @@ Features:
 - Optional fee abstraction (gasless transactions)
 - Instant finality (no consensus forks)
 - Ed25519 signature verification
-- BIP-39 24-word mnemonic support (Pera, Defly compatible)
-- Algorand native 25-word mnemonic support
 - Configurable Algod/Indexer URLs via environment variables
 
 Environment Variables:
@@ -22,18 +20,40 @@ Environment Variables:
 
 Usage:
     ```python
+    import base64
+    import algosdk
     from x402.mechanisms.avm import (
         ALGORAND_MAINNET_CAIP2,
-        AlgorandSigner,
+        ClientAvmSigner,
     )
     from x402.mechanisms.avm.exact import ExactAvmScheme
 
-    # Client-side with 25-word Algorand mnemonic
-    signer = AlgorandSigner.from_mnemonic("word1 word2 ... word25")
+    # Implement ClientAvmSigner with algosdk
+    class MyAlgorandSigner:
+        def __init__(self, private_key_b64: str):
+            self._secret_key = base64.b64decode(private_key_b64)
+            self._address = algosdk.encoding.encode_address(self._secret_key[32:])
 
-    # Or with 24-word BIP-39 mnemonic (Pera, Defly compatible)
-    signer = AlgorandSigner.from_mnemonic("word1 word2 ... word24")
+        @property
+        def address(self) -> str:
+            return self._address
 
+        def sign_transactions(
+            self,
+            unsigned_txns: list[bytes],
+            indexes_to_sign: list[int],
+        ) -> list[bytes | None]:
+            result = []
+            for i, txn_bytes in enumerate(unsigned_txns):
+                if i in indexes_to_sign:
+                    txn = algosdk.encoding.msgpack_decode(txn_bytes)
+                    signed = txn.sign(self._secret_key)
+                    result.append(algosdk.encoding.msgpack_encode(signed))
+                else:
+                    result.append(None)
+            return result
+
+    signer = MyAlgorandSigner(os.environ["AVM_PRIVATE_KEY"])
     client = x402Client()
     client.register("algorand:*", ExactAvmScheme(signer))
     ```
@@ -64,16 +84,10 @@ from .types import (
     TransactionGroupInfo,
 )
 
-# Signer protocols
+# Signer protocols (implementations provided by integrator using algosdk)
 from .signer import (
     ClientAvmSigner,
     FacilitatorAvmSigner,
-)
-
-# Signer implementations
-from .signers import (
-    AlgorandSigner,
-    FacilitatorAlgorandSigner,
 )
 
 # Utilities
@@ -94,32 +108,6 @@ from .utils import (
     to_atomic_amount,
     validate_fee_payer_transaction,
     validate_no_security_risks,
-)
-
-# Mnemonic utilities
-from .mnemonic import (
-    ALGORAND_DERIVATION_PATH,
-    AlgorandAccount,
-    derive_algorand_from_bip39,
-    detect_mnemonic_type,
-    get_mnemonic_word_count,
-    is_valid_mnemonic,
-    mnemonic_to_algorand_account,
-)
-
-# BIP32-Ed25519 HD key derivation
-from .bip32_ed25519 import (
-    BIP32DerivationType,
-    ExtendedKey,
-    HARDENED_OFFSET,
-    derive_child_node_private,
-    derive_child_node_public,
-    derive_key,
-    from_seed,
-    get_algorand_bip44_path,
-    get_public_key,
-    harden,
-    sign_with_extended_key,
 )
 
 # Submodule exports
@@ -145,12 +133,9 @@ __all__ = [
     "ExactAvmPayloadV1",
     "ExactAvmPayloadV2",
     "TransactionGroupInfo",
-    # Signer protocols
+    # Signer protocols (implementations provided by integrator)
     "ClientAvmSigner",
     "FacilitatorAvmSigner",
-    # Signer implementations
-    "AlgorandSigner",
-    "FacilitatorAlgorandSigner",
     # Utilities
     "decode_base64_transaction",
     "decode_payment_group",
@@ -168,26 +153,6 @@ __all__ = [
     "to_atomic_amount",
     "validate_fee_payer_transaction",
     "validate_no_security_risks",
-    # Mnemonic utilities
-    "ALGORAND_DERIVATION_PATH",
-    "AlgorandAccount",
-    "derive_algorand_from_bip39",
-    "detect_mnemonic_type",
-    "get_mnemonic_word_count",
-    "is_valid_mnemonic",
-    "mnemonic_to_algorand_account",
-    # BIP32-Ed25519 HD key derivation
-    "BIP32DerivationType",
-    "ExtendedKey",
-    "HARDENED_OFFSET",
-    "derive_child_node_private",
-    "derive_child_node_public",
-    "derive_key",
-    "from_seed",
-    "get_algorand_bip44_path",
-    "get_public_key",
-    "harden",
-    "sign_with_extended_key",
     # Submodules
     "exact",
 ]

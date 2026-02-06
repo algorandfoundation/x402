@@ -1,6 +1,6 @@
 # Custom x402 Client Example
 
-This example demonstrates how to implement x402 payment handling manually using only the core packages, without the convenience wrappers like `x402HttpxClient` or `x402_requests`.
+This example demonstrates how to implement x402 payment handling manually using only the core packages, without the convenience wrappers like `x402HttpxClient` or `x402_requests`. Supports EVM (Ethereum), SVM (Solana), and AVM (Algorand) networks.
 
 Use this approach when you need:
 - Complete control over every step of the payment flow
@@ -57,6 +57,7 @@ Use this approach when you need:
 2. Edit `.env` with your configuration:
    - `EVM_PRIVATE_KEY`: Your EVM wallet private key (0x prefixed)
    - `SVM_PRIVATE_KEY`: Your Solana wallet private key (base58)
+   - `AVM_PRIVATE_KEY`: Base64-encoded 64-byte Algorand private key
    - `RESOURCE_SERVER_URL`: The x402-enabled server URL
    - `ENDPOINT_PATH`: The protected endpoint path
 
@@ -78,9 +79,11 @@ uv run python main.py
 ```python
 from x402 import x402Client
 from x402.mechanisms.evm.exact.register import register_exact_evm_client
+from x402.mechanisms.avm.exact.register import register_exact_avm_client
 
 client = x402Client()
 register_exact_evm_client(client, EthAccountSigner(account))
+register_exact_avm_client(client, avm_signer)  # See main.py for signer implementation
 ```
 
 ### 2. Detecting Payment Required
@@ -124,10 +127,11 @@ When multiple payment options are available, you can provide a custom selector:
 
 ```python
 def select_payment(version: int, requirements: list) -> PaymentRequirements:
-    # Prefer Solana if available
-    for req in requirements:
-        if req.network.startswith("solana:"):
-            return req
+    # Prefer Algorand, then Solana, then first available
+    for prefix in ("algorand:", "solana:"):
+        for req in requirements:
+            if req.network.startswith(prefix):
+                return req
     return requirements[0]
 
 client = x402Client(payment_requirements_selector=select_payment)

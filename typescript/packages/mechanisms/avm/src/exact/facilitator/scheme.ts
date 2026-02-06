@@ -273,7 +273,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
       const simResult = await this.signer.simulateTransactions(
         signedTxns,
         requirements.network,
-      );
+      ) as { txnGroups?: Array<{ failureMessage?: string }> };
 
       // Check simulation result
       if (

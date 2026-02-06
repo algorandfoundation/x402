@@ -41,27 +41,21 @@ export interface AvmFacilitatorConfig {
  * @example
  * ```typescript
  * import { registerExactAvmScheme } from "@x402/avm/exact/facilitator";
+ * import type { FacilitatorAvmSigner } from "@x402/avm";
  * import { x402Facilitator } from "@x402/core/facilitator";
  * import algosdk from "algosdk";
  *
- * const account = algosdk.mnemonicToSecretKey("your mnemonic...");
- * const signer = toFacilitatorAvmSigner(account);
+ * // Create signer implementing FacilitatorAvmSigner interface
+ * // See examples/typescript/facilitator for full implementation
+ * const signer: FacilitatorAvmSigner = createFacilitatorSigner(
+ *   process.env.AVM_PRIVATE_KEY!
+ * );
  *
  * const facilitator = new x402Facilitator();
  *
- * // Single network
  * registerExactAvmScheme(facilitator, {
  *   signer,
  *   networks: "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8="
- * });
- *
- * // Multiple networks
- * registerExactAvmScheme(facilitator, {
- *   signer,
- *   networks: [
- *     "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
- *     "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="
- *   ]
  * });
  * ```
  */

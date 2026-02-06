@@ -8,7 +8,8 @@ import { ExactEvmSchemeV1 } from "@x402/evm/exact/v1/facilitator";
 import { toFacilitatorSvmSigner } from "@x402/svm";
 import { ExactSvmScheme } from "@x402/svm/exact/facilitator";
 import { ExactSvmSchemeV1 } from "@x402/svm/exact/v1/facilitator";
-import { toFacilitatorAvmSigner, ALGORAND_TESTNET_CAIP2, mnemonicToAlgorandAccount } from "@x402/avm";
+import { ALGORAND_TESTNET_CAIP2, DEFAULT_ALGOD_TESTNET } from "@x402/avm";
+import algosdk from "algosdk";
 import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
 import { ExactAvmSchemeV1 } from "@x402/avm/exact/v1/facilitator";
 import { createWalletClient, http, publicActions } from "viem";
@@ -25,11 +26,11 @@ async function createFacilitator(): Promise<x402Facilitator> {
   // All chains are optional - at least one should be configured
   const evmPrivateKey = process.env.FACILITATOR_EVM_PRIVATE_KEY;
   const svmPrivateKey = process.env.FACILITATOR_SVM_PRIVATE_KEY;
-  const avmMnemonic = process.env.FACILITATOR_AVM_MNEMONIC || process.env.PRIVATE_KEY;
+  const avmPrivateKey = process.env.FACILITATOR_AVM_PRIVATE_KEY || process.env.PRIVATE_KEY;
 
-  if (!evmPrivateKey && !svmPrivateKey && !avmMnemonic) {
+  if (!evmPrivateKey && !svmPrivateKey && !avmPrivateKey) {
     throw new Error(
-      "❌ At least one facilitator key must be configured: FACILITATOR_EVM_PRIVATE_KEY, FACILITATOR_SVM_PRIVATE_KEY, or FACILITATOR_AVM_MNEMONIC",
+      "❌ At least one facilitator key must be configured: FACILITATOR_EVM_PRIVATE_KEY, FACILITATOR_SVM_PRIVATE_KEY, or FACILITATOR_AVM_PRIVATE_KEY",
     );
   }
 
@@ -118,18 +119,58 @@ async function createFacilitator(): Promise<x402Facilitator> {
     }
   }
 
-  // Add AVM (Algorand) support if mnemonic is available
-  // Supports both 24-word BIP-39 and 25-word Algorand native mnemonics
-  if (avmMnemonic) {
+  // Add AVM (Algorand) support if private key is available
+  if (avmPrivateKey) {
     try {
-      const avmAccount = mnemonicToAlgorandAccount(avmMnemonic);
-      const avmSigner = toFacilitatorAvmSigner(avmAccount);
+      // Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
+      const secretKey = Buffer.from(avmPrivateKey, "base64");
+      if (secretKey.length !== 64) {
+        throw new Error("FACILITATOR_AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
+      }
+      const address = algosdk.encodeAddress(secretKey.slice(32));
+
+      // Create Algod client for testnet
+      const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
+
+      // Implement FacilitatorAvmSigner interface directly
+      const avmSigner = {
+        getAddresses: () => [address] as readonly string[],
+
+        signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
+          const decoded = algosdk.decodeUnsignedTransaction(txn);
+          const signed = algosdk.signTransaction(decoded, secretKey);
+          return signed.blob;
+        },
+
+        getAlgodClient: (_network: string) => algodClient,
+
+        simulateTransactions: async (txns: Uint8Array[], _network: string) => {
+          const request = new algosdk.modelsv2.SimulateRequest({
+            txnGroups: [
+              new algosdk.modelsv2.SimulateRequestTransactionGroup({
+                txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
+              }),
+            ],
+            allowUnnamedResources: true,
+          });
+          return await algodClient.simulateTransactions(request).do();
+        },
+
+        sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
+          const response = await algodClient.sendRawTransaction(signedTxns).do();
+          return response.txid;
+        },
+
+        waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
+          return await algosdk.waitForConfirmation(algodClient, txId, waitRounds);
+        },
+      };
 
       facilitator = facilitator
         .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme(avmSigner))
         .registerV1("algorand-testnet" as Network, new ExactAvmSchemeV1(avmSigner));
 
-      console.log(`✅ AVM (Algorand) facilitator initialized for address: ${avmAccount.addr.toString()}`);
+      console.log(`✅ AVM (Algorand) facilitator initialized for address: ${address}`);
     } catch (error) {
       console.warn(
         `⚠️ Failed to initialize AVM facilitator: ${error instanceof Error ? error.message : "Unknown error"}`,

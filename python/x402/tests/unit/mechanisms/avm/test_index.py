@@ -53,16 +53,16 @@ class TestModuleExports:
             ClientAvmSigner, "__abstractmethods__"
         )
 
-    def test_signer_implementations_exported(self):
-        """Test that signer implementations are exported."""
+    def test_signer_protocols_are_protocols(self):
+        """Test that signer protocols are importable and are Protocol classes."""
         from x402.mechanisms.avm import (
-            AlgorandSigner,
-            FacilitatorAlgorandSigner,
+            ClientAvmSigner,
+            FacilitatorAvmSigner,
         )
 
-        # They should be classes
-        assert isinstance(AlgorandSigner, type)
-        assert isinstance(FacilitatorAlgorandSigner, type)
+        # They should be Protocol classes (no concrete implementations in core)
+        assert hasattr(ClientAvmSigner, "address")
+        assert hasattr(FacilitatorAvmSigner, "get_addresses")
 
     def test_utilities_exported(self):
         """Test that utilities are exported."""

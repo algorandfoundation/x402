@@ -21,7 +21,8 @@
     "@x402/svm": "workspace:*",
     "axios": "^1.13.2",
     "dotenv": "^16.4.7",
-    "viem": "^2.39.0"
+    "viem": "^2.39.0",
+    "algosdk": "^3.5.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",

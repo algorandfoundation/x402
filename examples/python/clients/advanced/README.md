@@ -1,11 +1,14 @@
 # Advanced Python Client Examples
 
-This directory contains advanced x402 client examples demonstrating hooks, custom selectors, and builder patterns.
+This directory contains advanced x402 client examples demonstrating hooks, custom selectors, and builder patterns. Supports EVM (Ethereum), SVM (Solana), and AVM (Algorand) networks.
 
 ## Prerequisites
 
 - Python 3.11+
-- An EVM private key with testnet funds (e.g., Base Sepolia)
+- At least one of:
+  - EVM private key with testnet funds (e.g., Base Sepolia)
+  - SVM private key with devnet funds (Solana)
+  - AVM private key (Base64-encoded 64-byte Algorand key) with testnet funds
 - A running x402 resource server (e.g., the FastAPI example server)
 
 ## Setup
@@ -21,7 +24,7 @@ This directory contains advanced x402 client examples demonstrating hooks, custo
 
    ```bash
    cp .env-local .env
-   # Edit .env and add your private key
+   # Edit .env and add at least one private key (EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY)
    ```
 
 3. **Start a test server** (in another terminal):
@@ -76,12 +79,12 @@ Demonstrates payment lifecycle hooks for logging, validation, and error recovery
 
 Shows how to implement a custom payment requirements selector:
 
-- Define network preference order (e.g., prefer L2 over L1)
+- Define network preference order (e.g., prefer Algorand > Solana > EVM)
 - Automatic fallback to supported alternatives
 - Useful for cost optimization or user preferences
 
 **Use cases:**
-- Prefer cheaper networks (Base > Ethereum)
+- Prefer faster/cheaper networks (Algorand > Solana > Ethereum)
 - User-configurable network preferences
 - Wallet UI with network selection
 
@@ -90,8 +93,9 @@ Shows how to implement a custom payment requirements selector:
 Demonstrates network-specific scheme registration:
 
 - Different signers for different networks
-- Wildcard patterns (`eip155:*`) with specific overrides (`eip155:1`)
+- Wildcard patterns (`eip155:*`, `algorand:*`) with specific overrides
 - Separate keys for mainnet vs testnet
+- Multi-chain support (EVM, SVM, AVM)
 
 **Use cases:**
 - Production vs development key separation
