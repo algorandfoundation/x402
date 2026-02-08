@@ -357,11 +357,10 @@ Add to your `.env`:
 ```typescript
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactAvmScheme } from "@x402/avm/exact/server";
-import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 
 const resourceServer = new x402ResourceServer(facilitatorClient)
   .register("eip155:84532", new ExactEvmScheme())
-  .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
+  .register("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", new ExactAvmScheme());
 ```
 
 ### Multi-Network Payment Configuration
@@ -375,7 +374,7 @@ app.use(
       "GET /weather": {
         accepts: [
           { scheme: "exact", price: "$0.001", network: "eip155:84532", payTo: evmAddress },
-          { scheme: "exact", price: "$0.001", network: ALGORAND_TESTNET_CAIP2, payTo: avmAddress },
+          { scheme: "exact", price: "$0.001", network: "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", payTo: avmAddress },
         ],
       },
     },
@@ -391,15 +390,14 @@ Register all supported networks with their schemes and payment configurations:
 ```typescript
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactAvmScheme } from "@x402/avm/exact/server";
-import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 
 const server = new x402ResourceServer(facilitatorClient)
   .register("eip155:84532", new ExactEvmScheme())
-  .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
+  .register("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", new ExactAvmScheme());
 
 const accepts: AcceptConfig[] = [
   { scheme: "exact", price: "$0.001", network: "eip155:84532", payTo: evmAddress },
-  { scheme: "exact", price: "$0.001", network: ALGORAND_TESTNET_CAIP2, payTo: avmAddress },
+  { scheme: "exact", price: "$0.001", network: "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", payTo: avmAddress },
 ];
 ```
 
@@ -411,7 +409,7 @@ const dynamicPrice = context => {
   return tier === "premium" ? "$0.005" : "$0.001";
 };
 
-accepts.push({ scheme: "exact", price: dynamicPrice, network: ALGORAND_TESTNET_CAIP2, payTo: avmAddress });
+accepts.push({ scheme: "exact", price: dynamicPrice, network: "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", payTo: avmAddress });
 ```
 
 ### AVM Dynamic PayTo Example
@@ -425,7 +423,7 @@ const avmAddressLookup: Record<string, string> = {
 accepts.push({
   scheme: "exact",
   price: "$0.001",
-  network: ALGORAND_TESTNET_CAIP2,
+  network: "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
   payTo: context => {
     const country = context.adapter.getQueryParam?.("country") ?? "US";
     return avmAddressLookup[country];
@@ -438,7 +436,7 @@ accepts.push({
 ```typescript
 const resourceServer = new x402ResourceServer(facilitatorClient)
   .register("eip155:84532", new ExactEvmScheme())
-  .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme())
+  .register("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", new ExactAvmScheme())
   .onAfterSettle(async context => {
     // Works for both EVM and AVM payments
     console.log(`Payment settled on ${context.result.network}`);

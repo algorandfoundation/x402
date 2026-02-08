@@ -3,7 +3,6 @@ import express from "express";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactAvmScheme } from "@x402/avm/exact/server";
-import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 config();
 
@@ -32,7 +31,7 @@ const accepts: { scheme: string; price: string; network: `${string}:${string}`; 
   {
     scheme: "exact",
     price: "$0.001",
-    network: ALGORAND_TESTNET_CAIP2,
+    network: "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
     payTo: avmAddress,
   },
 ];
@@ -53,7 +52,7 @@ const server = new x402ResourceServer(facilitatorClient).register(
   }),
 );
 
-server.register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
+server.register("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", new ExactAvmScheme());
 
 const app = express();
 

@@ -26,7 +26,6 @@ from pydantic import BaseModel
 from solders.keypair import Keypair
 
 from x402 import x402Facilitator
-from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
 from x402.mechanisms.avm.exact import register_exact_avm_facilitator
 from x402.mechanisms.evm import FacilitatorWeb3Signer
 from x402.mechanisms.evm.exact import register_exact_evm_facilitator
@@ -209,7 +208,7 @@ register_exact_svm_facilitator(
 register_exact_avm_facilitator(
     facilitator,
     avm_signer,
-    networks=ALGORAND_TESTNET_CAIP2,  # Algorand Testnet
+    networks="algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",  # Algorand Testnet
 )
 
 

@@ -51,7 +51,6 @@ import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
 import { registerExactEvmScheme } from "@x402/evm/exact/server";
 import { registerExactSvmScheme } from "@x402/svm/exact/server";
 import { registerExactAvmScheme } from "@x402/avm/exact/server";
-import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 import { createPaywall } from "@x402/paywall";
 import { evmPaywall } from "@x402/paywall/evm";
 import { svmPaywall } from "@x402/paywall/svm";
@@ -96,7 +95,7 @@ export const proxy = paymentProxy(
         {
           scheme: "exact",
           price: "$0.001",
-          network: ALGORAND_TESTNET_CAIP2,
+          network: "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
           payTo: avmAddress,
         },
       ],
@@ -123,8 +122,6 @@ The `/api/weather` route demonstrates the `withX402` wrapper for individual API 
 import { NextRequest, NextResponse } from "next/server";
 import { withX402 } from "@x402/next";
 import { server, paywall, evmAddress, svmAddress, avmAddress } from "../../../proxy";
-import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
-
 const handler = async (_: NextRequest) => {
   return NextResponse.json({
     report: {
@@ -153,7 +150,7 @@ export const GET = withX402(
       {
         scheme: "exact",
         price: "$0.001",
-        network: ALGORAND_TESTNET_CAIP2,
+        network: "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
         payTo: avmAddress,
       },
     ],

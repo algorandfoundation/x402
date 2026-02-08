@@ -3,7 +3,6 @@ import { x402Client, wrapFetchWithPayment, x402HTTPClient } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
 import { ExactAvmScheme } from "@x402/avm/exact/client";
-import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 import algosdk from "algosdk";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { base58 } from "@scure/base";
@@ -62,7 +61,7 @@ export async function runBuilderPatternExample(
     .register("solana:*", new ExactSvmScheme(svmSigner)) // All Solana networks
     .register("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", new ExactSvmScheme(solanaDevnetSigner)) // Devnet override
     .register("algorand:*", new ExactAvmScheme(avmSigner)) // All Algorand networks
-    .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme(algorandTestnetSigner)); // Testnet override
+    .register("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", new ExactAvmScheme(algorandTestnetSigner)); // Testnet override
 
   console.log("Registered networks:");
   console.log("  - eip155:* (all EVM) with default signer");

@@ -11,7 +11,7 @@ import { toFacilitatorEvmSigner } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { toFacilitatorSvmSigner } from "@x402/svm";
 import { registerExactSvmScheme } from "@x402/svm/exact/facilitator";
-import { ALGORAND_TESTNET_CAIP2, DEFAULT_ALGOD_TESTNET } from "@x402/avm";
+import { DEFAULT_ALGOD_TESTNET } from "@x402/avm";
 import { registerExactAvmScheme } from "@x402/avm/exact/facilitator";
 import algosdk from "algosdk";
 import dotenv from "dotenv";
@@ -178,7 +178,7 @@ registerExactSvmScheme(facilitator, {
 });
 registerExactAvmScheme(facilitator, {
   signer: avmSigner,
-  networks: ALGORAND_TESTNET_CAIP2, // Algorand Testnet
+  networks: "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", // Algorand Testnet
 });
 
 // Initialize Express app

@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 from x402.http.types import RouteConfig
-from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
 from x402.mechanisms.avm.exact import ExactAvmServerScheme
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 from x402.schemas import AssetAmount, Network
@@ -20,7 +19,7 @@ load_dotenv()
 # Config
 EVM_ADDRESS = os.getenv("EVM_ADDRESS")
 AVM_ADDRESS = os.getenv("AVM_ADDRESS")
-AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2
+AVM_NETWORK: Network = "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="  # Algorand Testnet
 EVM_NETWORK: Network = "eip155:84532"  # Base Sepolia
 FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://x402.org/facilitator")
 

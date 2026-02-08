@@ -181,10 +181,7 @@ Register additional schemes for other networks:
 ```typescript
 import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { registerExactSvmScheme } from "@x402/svm/exact/facilitator";
-import {
-  registerExactAvmScheme,
-  ALGORAND_TESTNET_CAIP2,
-} from "@x402/avm/exact/facilitator";
+import { registerExactAvmScheme } from "@x402/avm/exact/facilitator";
 
 const facilitator = new x402Facilitator();
 
@@ -200,7 +197,7 @@ registerExactSvmScheme(facilitator, {
 
 registerExactAvmScheme(facilitator, {
   signer: avmSigner,
-  networks: ALGORAND_TESTNET_CAIP2,
+  networks: "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
 });
 ```
 

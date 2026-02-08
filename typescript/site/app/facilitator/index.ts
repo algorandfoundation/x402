@@ -8,7 +8,7 @@ import { ExactEvmSchemeV1 } from "@x402/evm/exact/v1/facilitator";
 import { toFacilitatorSvmSigner } from "@x402/svm";
 import { ExactSvmScheme } from "@x402/svm/exact/facilitator";
 import { ExactSvmSchemeV1 } from "@x402/svm/exact/v1/facilitator";
-import { ALGORAND_TESTNET_CAIP2, DEFAULT_ALGOD_TESTNET } from "@x402/avm";
+import { DEFAULT_ALGOD_TESTNET } from "@x402/avm";
 import algosdk from "algosdk";
 import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
 import { ExactAvmSchemeV1 } from "@x402/avm/exact/v1/facilitator";
@@ -145,7 +145,7 @@ async function createFacilitator(): Promise<x402Facilitator> {
     .registerV1("base-sepolia" as Network, new ExactEvmSchemeV1(evmSigner))
     .register("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", new ExactSvmScheme(svmSigner))
     .registerV1("solana-devnet" as Network, new ExactSvmSchemeV1(svmSigner))
-    .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme(avmSigner))
+    .register("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", new ExactAvmScheme(avmSigner))
     .registerV1("algorand-testnet" as Network, new ExactAvmSchemeV1(avmSigner));
 
   return facilitator;

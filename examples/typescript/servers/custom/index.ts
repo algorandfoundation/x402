@@ -3,7 +3,6 @@ import express, { Request, Response, NextFunction } from "express";
 import { x402ResourceServer, HTTPFacilitatorClient, ResourceConfig } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactAvmScheme } from "@x402/avm/exact/server";
-import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 import type { PaymentRequirements } from "@x402/core/types";
 
 config();
@@ -56,7 +55,7 @@ console.log(`✅ Facilitator: ${facilitatorUrl}\n`);
 const facilitatorClient = new HTTPFacilitatorClient({ url: facilitatorUrl });
 const resourceServer = new x402ResourceServer(facilitatorClient)
   .register("eip155:84532", new ExactEvmScheme())
-  .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
+  .register("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", new ExactAvmScheme());
 
 // Build route accepts configs
 const routeAccepts: ResourceConfig[] = [
@@ -69,7 +68,7 @@ const routeAccepts: ResourceConfig[] = [
   {
     scheme: "exact",
     price: "$0.001",
-    network: ALGORAND_TESTNET_CAIP2,
+    network: "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
     payTo: avmAddress,
   },
 ];
