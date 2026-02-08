@@ -25,8 +25,6 @@ from x402.http import x402HTTPClient
 from x402.http.clients import x402HttpxClient
 from x402.mechanisms.evm import EthAccountSigner
 from x402.mechanisms.evm.exact.register import register_exact_evm_client
-from x402.mechanisms.svm import KeypairSigner
-from x402.mechanisms.svm.exact.register import register_exact_svm_client
 from x402.mechanisms.avm.exact.register import register_exact_avm_client
 from x402.schemas import (
     AbortResult,
@@ -92,42 +90,24 @@ async def payment_creation_failure_hook(
     return None  # Don't recover, let it fail
 
 
-async def run_hooks_example(
-    evm_private_key: str | None,
-    svm_private_key: str | None,
-    avm_private_key: str | None,
-    url: str,
-) -> None:
+async def run_hooks_example(private_key: str, url: str, avm_private_key: str | None = None) -> None:
     """Run the hooks example.
 
     Args:
-        evm_private_key: EVM private key for signing.
-        svm_private_key: SVM private key for signing.
-        avm_private_key: Base64-encoded 64-byte Algorand private key.
+        private_key: EVM private key for signing.
         url: URL to make the request to.
+        avm_private_key: Base64-encoded 64-byte Algorand private key (optional).
     """
-    if not evm_private_key and not svm_private_key and not avm_private_key:
-        print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY required")
-        sys.exit(1)
-
     print("🔧 Creating client with payment lifecycle hooks...\n")
+
+    account = Account.from_key(private_key)
+    print(f"Wallet address: {account.address}\n")
 
     # Create client with hooks registered via builder pattern
     client = x402Client()
+    register_exact_evm_client(client, EthAccountSigner(account))
 
-    # Register EVM payment scheme if private key provided
-    if evm_private_key:
-        account = Account.from_key(evm_private_key)
-        register_exact_evm_client(client, EthAccountSigner(account))
-        print(f"EVM wallet address: {account.address}")
-
-    # Register SVM payment scheme if private key provided
-    if svm_private_key:
-        svm_signer = KeypairSigner.from_base58(svm_private_key)
-        register_exact_svm_client(client, svm_signer)
-        print(f"SVM wallet address: {svm_signer.address}")
-
-    # Register AVM payment scheme if private key provided
+    # Register AVM (Algorand) payment scheme if private key provided
     if avm_private_key:
         import base64
         import algosdk
@@ -172,9 +152,7 @@ async def run_hooks_example(
 
         avm_signer = AlgorandSigner(secret_key, address)
         register_exact_avm_client(client, avm_signer)
-        print(f"AVM wallet address: {avm_signer.address}")
-
-    print()
+        print(f"AVM wallet address: {address}")
 
     # Register lifecycle hooks
     client.on_before_payment_creation(before_payment_creation_hook)
@@ -207,19 +185,18 @@ async def run_hooks_example(
 
 async def main() -> None:
     """Main entry point."""
-    evm_private_key = os.getenv("EVM_PRIVATE_KEY")
-    svm_private_key = os.getenv("SVM_PRIVATE_KEY")
-    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
+    private_key = os.getenv("EVM_PRIVATE_KEY")
     base_url = os.getenv("RESOURCE_SERVER_URL", "http://localhost:4021")
     endpoint_path = os.getenv("ENDPOINT_PATH", "/weather")
 
-    if not evm_private_key and not svm_private_key and not avm_private_key:
-        print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY required")
+    if not private_key:
+        print("Error: EVM_PRIVATE_KEY environment variable is required")
         print("Please copy .env-local to .env and fill in the values.")
         sys.exit(1)
 
+    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     url = f"{base_url}{endpoint_path}"
-    await run_hooks_example(evm_private_key, svm_private_key, avm_private_key, url)
+    await run_hooks_example(private_key, url, avm_private_key=avm_private_key)
 
 
 if __name__ == "__main__":

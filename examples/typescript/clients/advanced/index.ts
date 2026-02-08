@@ -21,10 +21,9 @@ const url = `${baseURL}${endpointPath}`;
  * - hooks: Payment lifecycle hooks for custom logic at different stages
  * - preferred-network: Client-side payment network preferences
  *
- * To run this example, you need to set at least one of the following environment variables:
+ * To run this example, you need to set the following environment variables:
  * - EVM_PRIVATE_KEY: The private key of the EVM signer
  * - SVM_PRIVATE_KEY: The private key of the SVM signer
- * - AVM_PRIVATE_KEY: Base64-encoded 64-byte Algorand private key
  *
  * Usage:
  *   pnpm start builder-pattern
@@ -36,22 +35,29 @@ async function main(): Promise<void> {
 
   console.log(`\n🚀 Running advanced example: ${pattern}\n`);
 
-  // Validate at least one network is configured
-  if (!evmPrivateKey && !svmPrivateKey && !avmPrivateKey) {
-    console.error("❌ At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY must be set");
+  if (!evmPrivateKey) {
+    console.error("❌ EVM_PRIVATE_KEY environment variable is required");
     process.exit(1);
   }
 
   switch (pattern) {
     case "builder-pattern":
+      if (!svmPrivateKey) {
+        console.error("❌ SVM_PRIVATE_KEY environment variable is required for builder-pattern");
+        process.exit(1);
+      }
       await runBuilderPatternExample(evmPrivateKey, svmPrivateKey, avmPrivateKey, url);
       break;
 
     case "hooks":
-      await runHooksExample(evmPrivateKey, svmPrivateKey, avmPrivateKey, url);
+      await runHooksExample(evmPrivateKey, avmPrivateKey, url);
       break;
 
     case "preferred-network":
+      if (!svmPrivateKey) {
+        console.error("❌ SVM_PRIVATE_KEY environment variable is required for preferred-network");
+        process.exit(1);
+      }
       await runPreferredNetworkExample(evmPrivateKey, svmPrivateKey, avmPrivateKey, url);
       break;
 

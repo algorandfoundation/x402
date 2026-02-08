@@ -6,7 +6,6 @@ on-chain for the x402 protocol.
 Supports:
 - EVM networks (Base Sepolia) via web3.py
 - SVM networks (Solana Devnet) via solders
-- AVM networks (Algorand Testnet) via py-algorand-sdk
 
 Run with: uvicorn main:app --port 4022
 """
@@ -17,14 +16,13 @@ import sys
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from solders.keypair import Keypair
 
 from x402 import x402Facilitator
 from x402.mechanisms.evm import FacilitatorWeb3Signer
 from x402.mechanisms.evm.exact import register_exact_evm_facilitator
 from x402.mechanisms.svm import FacilitatorKeypairSigner
 from x402.mechanisms.svm.exact import register_exact_svm_facilitator
-from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
-from x402.mechanisms.avm.exact import register_exact_avm_facilitator
 
 # Load environment variables
 load_dotenv()
@@ -32,14 +30,26 @@ load_dotenv()
 # Configuration
 PORT = int(os.environ.get("PORT", "4022"))
 
-# Check for at least one private key
-evm_key = os.environ.get("EVM_PRIVATE_KEY")
-svm_key = os.environ.get("SVM_PRIVATE_KEY")
-avm_private_key = os.environ.get("AVM_PRIVATE_KEY")
-
-if not evm_key and not svm_key and not avm_private_key:
-    print("Error: At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY required")
+# Validate required environment variables
+if not os.environ.get("EVM_PRIVATE_KEY"):
+    print("❌ EVM_PRIVATE_KEY environment variable is required")
     sys.exit(1)
+
+if not os.environ.get("SVM_PRIVATE_KEY"):
+    print("❌ SVM_PRIVATE_KEY environment variable is required")
+    sys.exit(1)
+
+# Initialize the EVM signer from private key
+evm_signer = FacilitatorWeb3Signer(
+    private_key=os.environ["EVM_PRIVATE_KEY"],
+    rpc_url=os.environ.get("EVM_RPC_URL", "https://sepolia.base.org"),
+)
+print(f"EVM Facilitator account: {evm_signer.get_addresses()[0]}")
+
+# Initialize the SVM signer from private key
+svm_keypair = Keypair.from_base58_string(os.environ["SVM_PRIVATE_KEY"])
+svm_signer = FacilitatorKeypairSigner(svm_keypair)
+print(f"SVM Facilitator account: {svm_signer.get_addresses()[0]}")
 
 
 # Async hook functions for the facilitator
@@ -67,7 +77,7 @@ async def settle_failure_hook(ctx):
     print(f"Settle failure: {ctx.error}")
 
 
-# Initialize the x402 Facilitator
+# Initialize the x402 Facilitator with EVM and SVM support
 facilitator = (
     x402Facilitator()
     .on_before_verify(before_verify_hook)
@@ -78,37 +88,26 @@ facilitator = (
     .on_settle_failure(settle_failure_hook)
 )
 
-# Register EVM scheme if private key provided
-if evm_key:
-    evm_signer = FacilitatorWeb3Signer(
-        private_key=evm_key,
-        rpc_url=os.environ.get("EVM_RPC_URL", "https://sepolia.base.org"),
-    )
-    print(f"EVM Facilitator account: {evm_signer.get_addresses()[0]}")
-    register_exact_evm_facilitator(
-        facilitator,
-        evm_signer,
-        networks="eip155:84532",  # Base Sepolia
-        deploy_erc4337_with_eip6492=True,
-    )
-
-# Register SVM scheme if private key provided
-if svm_key:
-    from solders.keypair import Keypair
-
-    svm_keypair = Keypair.from_base58_string(svm_key)
-    svm_signer = FacilitatorKeypairSigner(svm_keypair)
-    print(f"SVM Facilitator account: {svm_signer.get_addresses()[0]}")
-    register_exact_svm_facilitator(
-        facilitator,
-        svm_signer,
-        networks="solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",  # Devnet
-    )
+# Register EVM and SVM schemes
+register_exact_evm_facilitator(
+    facilitator,
+    evm_signer,
+    networks="eip155:84532",  # Base Sepolia
+    deploy_erc4337_with_eip6492=True,
+)
+register_exact_svm_facilitator(
+    facilitator,
+    svm_signer,
+    networks="solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",  # Devnet
+)
 
 # Register AVM (Algorand) scheme if private key provided
+avm_private_key = os.environ.get("AVM_PRIVATE_KEY")
 if avm_private_key:
     import base64
     import algosdk
+    from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
+    from x402.mechanisms.avm.exact import register_exact_avm_facilitator
 
     # Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
     secret_key = base64.b64decode(avm_private_key)

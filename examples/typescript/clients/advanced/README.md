@@ -5,27 +5,10 @@ Advanced patterns for x402 TypeScript clients demonstrating builder pattern regi
 ```typescript
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
-import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
-import algosdk from "algosdk";
-
-// Create AVM signer from Base64 private key
-const secretKey = Buffer.from(avmPrivateKey, "base64");
-const avmSigner = {
-  address: algosdk.encodeAddress(secretKey.slice(32)),
-  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-    return txns.map((txn, i) => {
-      if (indexesToSign && !indexesToSign.includes(i)) return null;
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, secretKey);
-      return signed.blob;
-    });
-  },
-};
 
 const client = new x402Client()
   .register("eip155:*", new ExactEvmScheme(privateKeyToAccount(evmPrivateKey)))
-  .register("algorand:*", new ExactAvmScheme(avmSigner))
   .onBeforePaymentCreation(async ctx => {
     console.log("Creating payment for:", ctx.selectedRequirements.network);
   })
@@ -41,10 +24,7 @@ const response = await fetchWithPayment("http://localhost:4021/weather");
 
 - Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
 - pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
-- Valid credentials for at least one network:
-  - EVM: Private key (hex string starting with 0x)
-  - SVM: Private key (base58 encoded)
-  - AVM: Base64-encoded 64-byte Algorand private key
+- Valid EVM and/or SVM private keys for making payments
 - A running x402 server (see [server examples](../../servers/))
 - Familiarity with the [basic fetch client](../fetch/)
 
@@ -56,13 +36,11 @@ const response = await fetchWithPayment("http://localhost:4021/weather");
 cp .env-local .env
 ```
 
-and configure at least one of the following environment variables:
+and fill required environment variables:
 
-- `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments (optional)
-- `SVM_PRIVATE_KEY` - Solana private key for SVM payments (optional)
+- `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments
+- `SVM_PRIVATE_KEY` - Solana private key for SVM payments
 - `AVM_PRIVATE_KEY` - Base64-encoded 64-byte Algorand private key for AVM payments (optional)
-
-Only networks with configured credentials will be registered.
 
 2. Install and build all packages from the typescript examples root:
 
@@ -112,35 +90,35 @@ Use the builder pattern for fine-grained control over which networks are support
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
-import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
-import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
-import algosdk from "algosdk";
 
 const evmSigner = privateKeyToAccount(evmPrivateKey);
 const mainnetSigner = privateKeyToAccount(mainnetPrivateKey);
-
-// Create AVM signer from Base64 private key
-const secretKey = Buffer.from(avmPrivateKey, "base64");
-const avmSigner = {
-  address: algosdk.encodeAddress(secretKey.slice(32)),
-  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-    return txns.map((txn, i) => {
-      if (indexesToSign && !indexesToSign.includes(i)) return null;
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, secretKey);
-      return signed.blob;
-    });
-  },
-};
 
 // More specific patterns take precedence over wildcards
 const client = new x402Client()
   .register("eip155:*", new ExactEvmScheme(evmSigner)) // All EVM networks
   .register("eip155:1", new ExactEvmScheme(mainnetSigner)) // Ethereum mainnet override
-  .register("solana:*", new ExactSvmScheme(svmSigner)) // All Solana networks
-  .register("algorand:*", new ExactAvmScheme(avmSigner)) // All Algorand networks
-  .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme(testnetAvmSigner)); // Testnet override
+  .register("solana:*", new ExactSvmScheme(svmSigner)); // All Solana networks
+
+// Optionally add AVM (Algorand) support
+if (avmPrivateKey) {
+  const { ExactAvmScheme } = await import("@x402/avm/exact/client");
+  const algosdk = await import("algosdk");
+  const secretKey = Buffer.from(avmPrivateKey, "base64");
+  const avmSigner = {
+    address: algosdk.encodeAddress(secretKey.slice(32)),
+    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+      return txns.map((txn, i) => {
+        if (indexesToSign && !indexesToSign.includes(i)) return null;
+        const decoded = algosdk.decodeUnsignedTransaction(txn);
+        const signed = algosdk.signTransaction(decoded, secretKey);
+        return signed.blob;
+      });
+    },
+  };
+  client.register("algorand:*", new ExactAvmScheme(avmSigner));
+}
 
 const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 const response = await fetchWithPayment("http://localhost:4021/weather");
@@ -159,29 +137,12 @@ Register custom logic at different payment stages for observability and control:
 ```typescript
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
-import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
-import algosdk from "algosdk";
 
-const evmSigner = privateKeyToAccount(process.env.EVM_PRIVATE_KEY);
-
-// Create AVM signer from Base64 private key
-const avmSecretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, "base64");
-const avmSigner = {
-  address: algosdk.encodeAddress(avmSecretKey.slice(32)),
-  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-    return txns.map((txn, i) => {
-      if (indexesToSign && !indexesToSign.includes(i)) return null;
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, avmSecretKey);
-      return signed.blob;
-    });
-  },
-};
+const signer = privateKeyToAccount(process.env.EVM_PRIVATE_KEY);
 
 const client = new x402Client()
-  .register("eip155:*", new ExactEvmScheme(evmSigner))
-  .register("algorand:*", new ExactAvmScheme(avmSigner))
+  .register("eip155:*", new ExactEvmScheme(signer))
   .onBeforePaymentCreation(async context => {
     console.log("Creating payment for:", context.selectedRequirements);
     // Abort payment by returning: { abort: true, reason: "Not allowed" }
@@ -220,12 +181,9 @@ Configure client-side network preferences with automatic fallback:
 import { x402Client, wrapFetchWithPayment, type PaymentRequirements } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
-import { ExactAvmScheme } from "@x402/avm/exact/client";
-import algosdk from "algosdk";
 
 // Define network preference order (most preferred first)
-// Algorand is preferred, then Solana, then EVM
-const networkPreferences = ["algorand:", "solana:", "eip155:"];
+const networkPreferences = ["solana:", "eip155:"];
 
 const preferredNetworkSelector = (
   _x402Version: number,
@@ -240,24 +198,29 @@ const preferredNetworkSelector = (
   return options[0];
 };
 
-// Create AVM signer from Base64 private key
-const avmSecretKey = Buffer.from(avmPrivateKey, "base64");
-const avmSigner = {
-  address: algosdk.encodeAddress(avmSecretKey.slice(32)),
-  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-    return txns.map((txn, i) => {
-      if (indexesToSign && !indexesToSign.includes(i)) return null;
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, avmSecretKey);
-      return signed.blob;
-    });
-  },
-};
-
 const client = new x402Client(preferredNetworkSelector)
   .register("eip155:*", new ExactEvmScheme(evmSigner))
-  .register("solana:*", new ExactSvmScheme(svmSigner))
-  .register("algorand:*", new ExactAvmScheme(avmSigner));
+  .register("solana:*", new ExactSvmScheme(svmSigner));
+
+// Optionally add AVM with higher preference
+if (avmPrivateKey) {
+  const { ExactAvmScheme } = await import("@x402/avm/exact/client");
+  const algosdk = await import("algosdk");
+  const secretKey = Buffer.from(avmPrivateKey, "base64");
+  const avmSigner = {
+    address: algosdk.encodeAddress(secretKey.slice(32)),
+    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+      return txns.map((txn, i) => {
+        if (indexesToSign && !indexesToSign.includes(i)) return null;
+        const decoded = algosdk.decodeUnsignedTransaction(txn);
+        const signed = algosdk.signTransaction(decoded, secretKey);
+        return signed.blob;
+      });
+    },
+  };
+  client.register("algorand:*", new ExactAvmScheme(avmSigner));
+  networkPreferences.unshift("algorand:"); // Add Algorand as highest preference
+}
 
 const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 const response = await fetchWithPayment("http://localhost:4021/weather");
@@ -270,17 +233,16 @@ const response = await fetchWithPayment("http://localhost:4021/weather");
 
 ## Multi-Network Support
 
-All examples support conditional network initialization based on available credentials:
+All examples support conditional network initialization based on available credentials. AVM can be added alongside EVM and SVM:
 
 ```typescript
 const client = new x402Client();
 
-// Only registers networks with available credentials
-if (evmPrivateKey) {
-  const { ExactEvmScheme } = await import("@x402/evm/exact/client");
-  client.register("eip155:*", new ExactEvmScheme(privateKeyToAccount(evmPrivateKey)));
-}
+// EVM and SVM are registered statically
+client.register("eip155:*", new ExactEvmScheme(privateKeyToAccount(evmPrivateKey)));
+client.register("solana:*", new ExactSvmScheme(svmSigner));
 
+// Optionally add AVM if credentials are available
 if (avmPrivateKey) {
   const { ExactAvmScheme } = await import("@x402/avm/exact/client");
   const algosdk = await import("algosdk");

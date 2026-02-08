@@ -10,8 +10,6 @@ from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 from x402.http.types import HTTPRequestContext, RouteConfig
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
-from x402.mechanisms.avm.exact import ExactAvmServerScheme
-from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
 from x402.schemas import Network
 from x402.server import x402ResourceServer
 
@@ -21,11 +19,10 @@ load_dotenv()
 EVM_ADDRESS = os.getenv("EVM_ADDRESS")
 AVM_ADDRESS = os.getenv("AVM_ADDRESS")
 EVM_NETWORK: Network = "eip155:84532"  # Base Sepolia
-AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2  # Algorand Testnet
 FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://x402.org/facilitator")
 
-if not EVM_ADDRESS and not AVM_ADDRESS:
-    raise ValueError("At least one of EVM_ADDRESS or AVM_ADDRESS is required")
+if not EVM_ADDRESS:
+    raise ValueError("Missing required EVM_ADDRESS environment variable")
 
 
 def get_dynamic_price(context: HTTPRequestContext) -> str:
@@ -47,10 +44,7 @@ app = FastAPI()
 
 facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
 server = x402ResourceServer(facilitator)
-if EVM_ADDRESS:
-    server.register(EVM_NETWORK, ExactEvmServerScheme())
-if AVM_ADDRESS:
-    server.register(AVM_NETWORK, ExactAvmServerScheme())
+server.register(EVM_NETWORK, ExactEvmServerScheme())
 
 
 # Register hooks to log selected payment option
@@ -62,18 +56,23 @@ async def after_verify(ctx):
 
 server.on_after_verify(after_verify)
 
-# Build accepts list based on available addresses
-dynamic_price_accepts = []
-if EVM_ADDRESS:
-    dynamic_price_accepts.append(
-        PaymentOption(
-            scheme="exact",
-            pay_to=EVM_ADDRESS,
-            price=get_dynamic_price,
-            network=EVM_NETWORK,
-        )
-    )
+dynamic_price_accepts = [
+    PaymentOption(
+        scheme="exact",
+        pay_to=EVM_ADDRESS,
+        price=get_dynamic_price,
+        network=EVM_NETWORK,
+    ),
+]
+
+# Register AVM (Algorand) support if configured
 if AVM_ADDRESS:
+    from x402.mechanisms.avm.exact import ExactAvmServerScheme
+    from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
+
+    AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2
+    server.register(AVM_NETWORK, ExactAvmServerScheme())
+
     dynamic_price_accepts.append(
         PaymentOption(
             scheme="exact",

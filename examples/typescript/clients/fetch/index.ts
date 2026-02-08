@@ -1,5 +1,10 @@
 import { config } from "dotenv";
 import { x402Client, wrapFetchWithPayment, x402HTTPClient } from "@x402/fetch";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
+import { registerExactSvmScheme } from "@x402/svm/exact/client";
+import { privateKeyToAccount } from "viem/accounts";
+import { createKeyPairSignerFromBytes } from "@solana/kit";
+import { base58 } from "@scure/base";
 
 config();
 
@@ -10,63 +15,35 @@ const baseURL = process.env.RESOURCE_SERVER_URL || "http://localhost:4021";
 const endpointPath = process.env.ENDPOINT_PATH || "/weather";
 const url = `${baseURL}${endpointPath}`;
 
-// Validate at least one credential is configured
-if (!evmPrivateKey && !svmPrivateKey && !avmPrivateKey) {
-  console.error("❌ At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY must be set");
-  process.exit(1);
-}
-
 /**
  * Example demonstrating how to use @x402/fetch to make requests to x402-protected endpoints.
  *
- * This uses the helper registration functions from @x402/evm, @x402/svm, and @x402/avm to register
- * networks conditionally based on which credentials are provided.
+ * This uses the helper registration functions from @x402/evm and @x402/svm to register
+ * all supported networks for both v1 and v2 protocols.
  *
- * Environment variables (at least one required):
+ * Required environment variables:
  * - EVM_PRIVATE_KEY: The private key of the EVM signer
  * - SVM_PRIVATE_KEY: The private key of the SVM signer
- * - AVM_PRIVATE_KEY: Base64-encoded 64-byte Algorand private key
  */
 async function main(): Promise<void> {
+  const evmSigner = privateKeyToAccount(evmPrivateKey);
+  const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
+
   const client = new x402Client();
-  const enabledNetworks: string[] = [];
+  registerExactEvmScheme(client, { signer: evmSigner });
+  registerExactSvmScheme(client, { signer: svmSigner });
 
-  // Conditionally register EVM support
-  if (evmPrivateKey) {
-    const { registerExactEvmScheme } = await import("@x402/evm/exact/client");
-    const { privateKeyToAccount } = await import("viem/accounts");
-
-    const evmSigner = privateKeyToAccount(evmPrivateKey);
-    registerExactEvmScheme(client, { signer: evmSigner });
-    enabledNetworks.push("EVM");
-    console.info(`EVM signer: ${evmSigner.address}`);
-  }
-
-  // Conditionally register SVM support
-  if (svmPrivateKey) {
-    const { registerExactSvmScheme } = await import("@x402/svm/exact/client");
-    const { createKeyPairSignerFromBytes } = await import("@solana/kit");
-    const { base58 } = await import("@scure/base");
-
-    const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
-    registerExactSvmScheme(client, { signer: svmSigner });
-    enabledNetworks.push("SVM");
-    console.info(`SVM signer: ${svmSigner.address}`);
-  }
-
-  // Conditionally register AVM (Algorand) support
+  // Register AVM (Algorand) support if configured
   if (avmPrivateKey) {
     const { registerExactAvmScheme } = await import("@x402/avm/exact/client");
     const algosdk = await import("algosdk");
 
-    // Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
     const secretKey = Buffer.from(avmPrivateKey, "base64");
     if (secretKey.length !== 64) {
       throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
     }
     const address = algosdk.encodeAddress(secretKey.slice(32));
 
-    // Implement ClientAvmSigner interface directly
     const avmSigner = {
       address,
       signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
@@ -80,11 +57,8 @@ async function main(): Promise<void> {
     };
 
     registerExactAvmScheme(client, { signer: avmSigner });
-    enabledNetworks.push("AVM");
     console.info(`AVM signer: ${address}`);
   }
-
-  console.info(`Enabled networks: ${enabledNetworks.join(", ")}\n`);
 
   const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 

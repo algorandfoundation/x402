@@ -44,24 +44,23 @@ from x402.schemas import PaymentRequired
 load_dotenv()
 
 
-def validate_environment() -> tuple[str | None, str | None, str | None, str, str]:
+def validate_environment() -> tuple[str | None, str | None, str, str]:
     """Validate required environment variables.
 
     Returns:
-        Tuple of (evm_private_key, svm_private_key, avm_private_key, base_url, endpoint_path).
+        Tuple of (evm_private_key, svm_private_key, base_url, endpoint_path).
 
     Raises:
         SystemExit: If required environment variables are missing.
     """
     evm_private_key = os.getenv("EVM_PRIVATE_KEY")
     svm_private_key = os.getenv("SVM_PRIVATE_KEY")
-    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     base_url = os.getenv("RESOURCE_SERVER_URL")
     endpoint_path = os.getenv("ENDPOINT_PATH")
 
     missing = []
-    if not evm_private_key and not svm_private_key and not avm_private_key:
-        missing.append("EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY")
+    if not evm_private_key and not svm_private_key:
+        missing.append("EVM_PRIVATE_KEY or SVM_PRIVATE_KEY")
     if not base_url:
         missing.append("RESOURCE_SERVER_URL")
     if not endpoint_path:
@@ -72,7 +71,7 @@ def validate_environment() -> tuple[str | None, str | None, str | None, str, str
         print("Please copy .env-local to .env and fill in the values.")
         sys.exit(1)
 
-    return evm_private_key, svm_private_key, avm_private_key, base_url, endpoint_path
+    return evm_private_key, svm_private_key, base_url, endpoint_path
 
 
 async def make_request_with_payment(client: x402Client, url: str) -> None:
@@ -168,7 +167,7 @@ async def main() -> None:
     print("\n  Custom x402 Client (v2 Protocol)\n")
 
     # Validate environment variables
-    evm_private_key, svm_private_key, avm_private_key, base_url, endpoint_path = validate_environment()
+    evm_private_key, svm_private_key, base_url, endpoint_path = validate_environment()
 
     # Create x402 client
     # You can optionally provide a custom selector function to choose
@@ -194,7 +193,8 @@ async def main() -> None:
         register_exact_svm_client(client, svm_signer)
         print(f"  Initialized SVM account: {svm_signer.address}")
 
-    # Register AVM payment scheme if private key provided
+    # Register AVM (Algorand) payment scheme if private key provided
+    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     if avm_private_key:
         import base64
         import algosdk

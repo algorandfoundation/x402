@@ -7,7 +7,6 @@ Use this approach when you need:
 - Different signers for different networks (e.g., separate keys for mainnet vs testnet)
 - Fine-grained control over which networks are supported
 - Custom scheme configurations per network
-- Multi-chain support (EVM, SVM, AVM)
 """
 
 import asyncio
@@ -29,68 +28,57 @@ load_dotenv()
 
 
 async def run_builder_pattern_example(
-    evm_private_key: str | None,
-    svm_private_key: str | None,
-    avm_private_key: str | None,
+    private_key: str,
     url: str,
     mainnet_key: str | None = None,
     testnet_key: str | None = None,
+    avm_private_key: str | None = None,
 ) -> None:
     """Run the builder pattern example.
 
     Args:
-        evm_private_key: Default EVM private key for signing (optional).
-        svm_private_key: Solana private key for signing (optional, for future extension).
-        avm_private_key: Base64-encoded 64-byte Algorand private key (optional).
+        private_key: Default EVM private key for signing.
         url: URL to make the request to.
-        mainnet_key: Optional separate EVM key for mainnet (defaults to evm_private_key).
-        testnet_key: Optional separate EVM key for testnet (defaults to evm_private_key).
+        mainnet_key: Optional separate key for mainnet (defaults to private_key).
+        testnet_key: Optional separate key for testnet (defaults to private_key).
+        avm_private_key: Base64-encoded 64-byte Algorand private key (optional).
     """
-    if not evm_private_key and not avm_private_key:
-        print("Error: At least one of EVM_PRIVATE_KEY or AVM_PRIVATE_KEY is required")
-        sys.exit(1)
-
     print("🔧 Creating client with builder pattern...\n")
 
-    # Start building the client
-    client = x402Client()
+    # Create accounts - in production, you might use different keys per network
+    default_account = Account.from_key(private_key)
+    mainnet_account = Account.from_key(mainnet_key) if mainnet_key else default_account
+    testnet_account = Account.from_key(testnet_key) if testnet_key else default_account
 
-    # Register EVM networks if private key provided
-    if evm_private_key:
-        # Create accounts - in production, you might use different keys per network
-        default_account = Account.from_key(evm_private_key)
-        mainnet_account = Account.from_key(mainnet_key) if mainnet_key else default_account
-        testnet_account = Account.from_key(testnet_key) if testnet_key else default_account
+    # Create signers for different networks
+    default_signer = EthAccountSigner(default_account)
+    mainnet_signer = EthAccountSigner(mainnet_account)
+    testnet_signer = EthAccountSigner(testnet_account)
 
-        # Create signers for different networks
-        default_signer = EthAccountSigner(default_account)
-        mainnet_signer = EthAccountSigner(mainnet_account)
-        testnet_signer = EthAccountSigner(testnet_account)
+    # Builder pattern allows fine-grained control over network registration
+    # More specific patterns take precedence over wildcards
+    client = (
+        x402Client()
+        # Wildcard: All EVM networks (fallback)
+        .register("eip155:*", ExactEvmScheme(default_signer))
+        # Specific: Ethereum mainnet with dedicated signer
+        .register("eip155:1", ExactEvmScheme(mainnet_signer))
+        # Specific: Base mainnet
+        .register("eip155:8453", ExactEvmScheme(mainnet_signer))
+        # Specific: Base Sepolia testnet with testnet signer
+        .register("eip155:84532", ExactEvmScheme(testnet_signer))
+        # Specific: Sepolia testnet
+        .register("eip155:11155111", ExactEvmScheme(testnet_signer))
+    )
 
-        # Builder pattern allows fine-grained control over network registration
-        # More specific patterns take precedence over wildcards
-        client = (
-            client
-            # Wildcard: All EVM networks (fallback)
-            .register("eip155:*", ExactEvmScheme(default_signer))
-            # Specific: Ethereum mainnet with dedicated signer
-            .register("eip155:1", ExactEvmScheme(mainnet_signer))
-            # Specific: Base mainnet
-            .register("eip155:8453", ExactEvmScheme(mainnet_signer))
-            # Specific: Base Sepolia testnet with testnet signer
-            .register("eip155:84532", ExactEvmScheme(testnet_signer))
-            # Specific: Sepolia testnet
-            .register("eip155:11155111", ExactEvmScheme(testnet_signer))
-        )
+    print("Registered networks:")
+    print(f"  - eip155:* (all EVM): {default_account.address}")
+    print(f"  - eip155:1 (Ethereum mainnet): {mainnet_account.address}")
+    print(f"  - eip155:8453 (Base mainnet): {mainnet_account.address}")
+    print(f"  - eip155:84532 (Base Sepolia): {testnet_account.address}")
+    print(f"  - eip155:11155111 (Sepolia): {testnet_account.address}")
 
-        print("Registered EVM networks:")
-        print(f"  - eip155:* (all EVM): {default_account.address}")
-        print(f"  - eip155:1 (Ethereum mainnet): {mainnet_account.address}")
-        print(f"  - eip155:8453 (Base mainnet): {mainnet_account.address}")
-        print(f"  - eip155:84532 (Base Sepolia): {testnet_account.address}")
-        print(f"  - eip155:11155111 (Sepolia): {testnet_account.address}")
-
-    # Register AVM networks if private key provided
+    # Register AVM (Algorand) networks if private key provided
     if avm_private_key:
         import base64
         import algosdk
@@ -184,23 +172,20 @@ async def run_builder_pattern_example(
 
 async def main() -> None:
     """Main entry point."""
-    evm_private_key = os.getenv("EVM_PRIVATE_KEY")
-    svm_private_key = os.getenv("SVM_PRIVATE_KEY")
-    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
+    private_key = os.getenv("EVM_PRIVATE_KEY")
     mainnet_key = os.getenv("MAINNET_PRIVATE_KEY")  # Optional: separate mainnet key
     testnet_key = os.getenv("TESTNET_PRIVATE_KEY")  # Optional: separate testnet key
     base_url = os.getenv("RESOURCE_SERVER_URL", "http://localhost:4021")
     endpoint_path = os.getenv("ENDPOINT_PATH", "/weather")
 
-    if not evm_private_key and not avm_private_key:
-        print("Error: At least one of EVM_PRIVATE_KEY or AVM_PRIVATE_KEY is required")
+    if not private_key:
+        print("Error: EVM_PRIVATE_KEY environment variable is required")
         print("Please copy .env-local to .env and fill in the values.")
         sys.exit(1)
 
+    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     url = f"{base_url}{endpoint_path}"
-    await run_builder_pattern_example(
-        evm_private_key, svm_private_key, avm_private_key, url, mainnet_key, testnet_key
-    )
+    await run_builder_pattern_example(private_key, url, mainnet_key, testnet_key, avm_private_key=avm_private_key)
 
 
 if __name__ == "__main__":

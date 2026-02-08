@@ -20,24 +20,23 @@ from x402.mechanisms.avm.exact.register import register_exact_avm_client
 load_dotenv()
 
 
-def validate_environment() -> tuple[str | None, str | None, str | None, str, str]:
+def validate_environment() -> tuple[str | None, str | None, str, str]:
     """Validate required environment variables.
 
     Returns:
-        Tuple of (evm_private_key, svm_private_key, avm_private_key, base_url, endpoint_path).
+        Tuple of (evm_private_key, svm_private_key, base_url, endpoint_path).
 
     Raises:
         SystemExit: If required environment variables are missing.
     """
     evm_private_key = os.getenv("EVM_PRIVATE_KEY")
     svm_private_key = os.getenv("SVM_PRIVATE_KEY")
-    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     base_url = os.getenv("RESOURCE_SERVER_URL")
     endpoint_path = os.getenv("ENDPOINT_PATH")
 
     missing = []
-    if not evm_private_key and not svm_private_key and not avm_private_key:
-        missing.append("EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY")
+    if not evm_private_key and not svm_private_key:
+        missing.append("EVM_PRIVATE_KEY or SVM_PRIVATE_KEY")
     if not base_url:
         missing.append("RESOURCE_SERVER_URL")
     if not endpoint_path:
@@ -48,15 +47,13 @@ def validate_environment() -> tuple[str | None, str | None, str | None, str, str
         print("Please copy .env-local to .env and fill in the values.")
         sys.exit(1)
 
-    return evm_private_key, svm_private_key, avm_private_key, base_url, endpoint_path
+    return evm_private_key, svm_private_key, base_url, endpoint_path
 
 
 async def main() -> None:
     """Main entry point demonstrating httpx with x402 payments."""
     # Validate environment
-    evm_private_key, svm_private_key, avm_private_key, base_url, endpoint_path = (
-        validate_environment()
-    )
+    evm_private_key, svm_private_key, base_url, endpoint_path = validate_environment()
 
     # Create x402 client
     client = x402Client()
@@ -74,6 +71,7 @@ async def main() -> None:
         print(f"Initialized SVM account: {svm_signer.address}")
 
     # Register AVM (Algorand) payment scheme if private key provided
+    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     if avm_private_key:
         import base64
         import algosdk
@@ -128,8 +126,7 @@ async def main() -> None:
     print(f"Making request to: {url}\n")
 
     # Make request using async context manager
-    # Use longer timeout for blockchain transactions (Algorand can take up to 4.5s per block)
-    async with x402HttpxClient(client, timeout=60.0) as http:
+    async with x402HttpxClient(client) as http:
         response = await http.get(url)
         await response.aread()
 

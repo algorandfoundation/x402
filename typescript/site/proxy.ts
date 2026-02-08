@@ -51,10 +51,28 @@ const paywall = createPaywall()
   })
   .build();
 
-// Build accepts array based on configured addresses
-const accepts = [];
-const schemes = [];
+// Build accepts and schemes arrays
+const accepts = [
+  {
+    payTo: evmPayeeAddress,
+    scheme: "exact",
+    price: "$0.01",
+    network: EVM_NETWORK,
+  },
+  {
+    payTo: svmPayeeAddress,
+    scheme: "exact",
+    price: "$0.01",
+    network: SVM_NETWORK,
+  },
+];
 
+const schemes = [
+  { network: EVM_NETWORK, server: new ExactEvmScheme() },
+  { network: SVM_NETWORK, server: new ExactSvmScheme() },
+];
+
+// Optionally add AVM (Algorand) support if configured
 if (avmPayeeAddress) {
   accepts.push({
     payTo: avmPayeeAddress,
@@ -63,26 +81,6 @@ if (avmPayeeAddress) {
     network: AVM_NETWORK,
   });
   schemes.push({ network: AVM_NETWORK, server: new ExactAvmScheme() });
-}
-
-if (evmPayeeAddress) {
-  accepts.push({
-    payTo: evmPayeeAddress,
-    scheme: "exact",
-    price: "$0.01",
-    network: EVM_NETWORK,
-  });
-  schemes.push({ network: EVM_NETWORK, server: new ExactEvmScheme() });
-}
-
-if (svmPayeeAddress) {
-  accepts.push({
-    payTo: svmPayeeAddress,
-    scheme: "exact",
-    price: "$0.01",
-    network: SVM_NETWORK,
-  });
-  schemes.push({ network: SVM_NETWORK, server: new ExactSvmScheme() });
 }
 
 const x402PaymentProxy = paymentProxyFromConfig(

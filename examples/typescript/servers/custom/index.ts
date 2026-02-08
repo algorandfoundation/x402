@@ -1,6 +1,7 @@
 import { config } from "dotenv";
 import express, { Request, Response, NextFunction } from "express";
-import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
+import { x402ResourceServer, HTTPFacilitatorClient, ResourceConfig } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
 import type { PaymentRequirements } from "@x402/core/types";
 
 config();
@@ -25,16 +26,12 @@ config();
  * - Understanding of how x402 works internally
  */
 
-// Configuration
 const evmAddress = process.env.EVM_ADDRESS as `0x${string}`;
-const svmAddress = process.env.SVM_ADDRESS;
 const avmAddress = process.env.AVM_ADDRESS;
 const facilitatorUrl = process.env.FACILITATOR_URL;
-const port = parseInt(process.env.PORT || "4021", 10);
 
-// Validate at least one network address is configured
-if (!evmAddress && !svmAddress && !avmAddress) {
-  console.error("❌ At least one of EVM_ADDRESS, SVM_ADDRESS, or AVM_ADDRESS must be set");
+if (!evmAddress) {
+  console.error("❌ EVM_ADDRESS environment variable is required");
   process.exit(1);
 }
 
@@ -45,77 +42,50 @@ if (!facilitatorUrl) {
 
 console.log("\n🔧 Custom x402 Server Implementation");
 console.log("This example demonstrates manual payment handling without middleware.\n");
-console.log(`✅ Facilitator: ${facilitatorUrl}`);
+console.log(`✅ Payment address: ${evmAddress}`);
+console.log(`✅ Facilitator: ${facilitatorUrl}\n`);
 
 // Create facilitator client and resource server
 const facilitatorClient = new HTTPFacilitatorClient({ url: facilitatorUrl });
-const resourceServer = new x402ResourceServer(facilitatorClient);
+const resourceServer = new x402ResourceServer(facilitatorClient).register(
+  "eip155:84532",
+  new ExactEvmScheme(),
+);
 
-// Build accepts array and register schemes based on available addresses
-type AcceptConfig = { scheme: string; price: string; network: `${string}:${string}`; payTo: string };
-const accepts: AcceptConfig[] = [];
-const enabledNetworks: string[] = [];
-
-// Conditionally add EVM support
-if (evmAddress) {
-  const { ExactEvmScheme } = await import("@x402/evm/exact/server");
-  const network = "eip155:84532"; // Base Sepolia
-
-  accepts.push({
+// Build route accepts configs
+const routeAccepts: ResourceConfig[] = [
+  {
     scheme: "exact",
     price: "$0.001",
-    network,
+    network: "eip155:84532",
     payTo: evmAddress,
-  });
-  resourceServer.register(network, new ExactEvmScheme());
-  enabledNetworks.push("EVM (Base Sepolia)");
-  console.log(`✅ EVM address: ${evmAddress}`);
-}
+  },
+];
 
-// Conditionally add SVM support
-if (svmAddress) {
-  const { ExactSvmScheme } = await import("@x402/svm/exact/server");
-  const network = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"; // Solana Devnet
-
-  accepts.push({
-    scheme: "exact",
-    price: "$0.001",
-    network,
-    payTo: svmAddress,
-  });
-  resourceServer.register(network, new ExactSvmScheme());
-  enabledNetworks.push("SVM (Solana Devnet)");
-  console.log(`✅ SVM address: ${svmAddress}`);
-}
-
-// Conditionally add AVM (Algorand) support
+// Register AVM (Algorand) support if configured
 if (avmAddress) {
   const { ExactAvmScheme } = await import("@x402/avm/exact/server");
   const { ALGORAND_TESTNET_CAIP2 } = await import("@x402/avm");
 
-  accepts.push({
+  routeAccepts.push({
     scheme: "exact",
     price: "$0.001",
     network: ALGORAND_TESTNET_CAIP2,
     payTo: avmAddress,
   });
   resourceServer.register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
-  enabledNetworks.push("AVM (Algorand Testnet)");
-  console.log(`✅ AVM address: ${avmAddress}`);
 }
-
-console.log(`\nEnabled networks: ${enabledNetworks.join(", ")}\n`);
 
 // Define route configurations (will be converted to PaymentRequirements at runtime)
 interface RoutePaymentConfig {
-  accepts: AcceptConfig[];
+  accepts: ResourceConfig[];
   description: string;
   mimeType: string;
 }
 
 const routeConfigs: Record<string, RoutePaymentConfig> = {
   "GET /weather": {
-    accepts,
+    accepts: routeAccepts,
     description: "Weather data",
     mimeType: "application/json",
   },
@@ -149,7 +119,6 @@ async function customPaymentMiddleware(
 
   // Build PaymentRequirements from config (cached for efficiency)
   if (!routeRequirements[routeKey]) {
-    // Build requirements for each accept config
     const builtRequirements: PaymentRequirements[] = [];
     for (const acceptConfig of routeConfig.accepts) {
       const built = await resourceServer.buildPaymentRequirements(acceptConfig);
@@ -296,17 +265,20 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", version: "2.0.0" });
 });
 
+// Start server
+const PORT = 4021;
+
 // Initialize the resource server (sync with facilitator) before starting
 resourceServer.initialize().then(() => {
-  app.listen(port, () => {
-    console.log(`🚀 Custom server listening at http://localhost:${port}\n`);
+  app.listen(PORT, () => {
+    console.log(`🚀 Custom server listening at http://localhost:${PORT}\n`);
     console.log("Key implementation steps:");
     console.log("  1. ✅ Check for payment headers in requests");
     console.log("  2. ✅ Return 402 with requirements if no payment");
     console.log("  3. ✅ Verify payments with facilitator");
     console.log("  4. ✅ Execute handler on successful verification");
     console.log("  5. ✅ Settle payment and add response headers\n");
-    console.log(`Test with: curl http://localhost:${port}/weather`);
+    console.log("Test with: curl http://localhost:4021/weather");
     console.log("Or use a client from: ../../clients/\n");
   });
 });

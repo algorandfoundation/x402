@@ -8,8 +8,6 @@ from x402.http.middleware.flask import payment_middleware
 from x402.http.types import RouteConfig
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 from x402.mechanisms.svm.exact import ExactSvmServerScheme
-from x402.mechanisms.avm.exact import ExactAvmServerScheme
-from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2, USDC_TESTNET_ASA_ID
 from x402.schemas import AssetAmount, Network
 from x402.server import x402ResourceServerSync
 
@@ -21,12 +19,10 @@ SVM_ADDRESS = os.getenv("SVM_ADDRESS")
 AVM_ADDRESS = os.getenv("AVM_ADDRESS")
 EVM_NETWORK: Network = "eip155:84532"  # Base Sepolia
 SVM_NETWORK: Network = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"  # Solana Devnet
-AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2  # Algorand Testnet
 FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://x402.org/facilitator")
 
-# At least one address is required
-if not EVM_ADDRESS and not SVM_ADDRESS and not AVM_ADDRESS:
-    raise ValueError("At least one of EVM_ADDRESS, SVM_ADDRESS, or AVM_ADDRESS required")
+if not EVM_ADDRESS or not SVM_ADDRESS:
+    raise ValueError("Missing required environment variables")
 
 
 # App
@@ -36,60 +32,51 @@ app = Flask(__name__)
 # x402 Middleware
 facilitator = HTTPFacilitatorClientSync(FacilitatorConfig(url=FACILITATOR_URL))
 server = x402ResourceServerSync(facilitator)
+server.register(EVM_NETWORK, ExactEvmServerScheme())
+server.register(SVM_NETWORK, ExactSvmServerScheme())
 
-# Register payment schemes based on available addresses
-if EVM_ADDRESS:
-    server.register(EVM_NETWORK, ExactEvmServerScheme())
-if SVM_ADDRESS:
-    server.register(SVM_NETWORK, ExactSvmServerScheme())
+weather_accepts = [
+    PaymentOption(
+        scheme="exact",
+        pay_to=EVM_ADDRESS,
+        price="$0.01",
+        network=EVM_NETWORK,
+    ),
+    PaymentOption(
+        scheme="exact",
+        pay_to=SVM_ADDRESS,
+        price="$0.01",
+        network=SVM_NETWORK,
+    ),
+]
+
+premium_accepts = [
+    PaymentOption(
+        scheme="exact",
+        pay_to=EVM_ADDRESS,
+        price=AssetAmount(
+            amount="10000",  # $0.01 USDC
+            asset="0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            extra={"name": "USDC", "version": "2"},
+        ),
+        network=EVM_NETWORK,
+    ),
+    PaymentOption(
+        scheme="exact",
+        pay_to=SVM_ADDRESS,
+        price="$0.01",
+        network=SVM_NETWORK,
+    ),
+]
+
+# Register AVM (Algorand) support if configured
 if AVM_ADDRESS:
+    from x402.mechanisms.avm.exact import ExactAvmServerScheme
+    from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2, USDC_TESTNET_ASA_ID
+
+    AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2
     server.register(AVM_NETWORK, ExactAvmServerScheme())
 
-# Build payment options based on configured addresses
-weather_accepts = []
-premium_accepts = []
-
-if EVM_ADDRESS:
-    weather_accepts.append(
-        PaymentOption(
-            scheme="exact",
-            pay_to=EVM_ADDRESS,
-            price="$0.01",
-            network=EVM_NETWORK,
-        )
-    )
-    premium_accepts.append(
-        PaymentOption(
-            scheme="exact",
-            pay_to=EVM_ADDRESS,
-            price=AssetAmount(
-                amount="10000",  # $0.01 USDC
-                asset="0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-                extra={"name": "USDC", "version": "2"},
-            ),
-            network=EVM_NETWORK,
-        )
-    )
-
-if SVM_ADDRESS:
-    weather_accepts.append(
-        PaymentOption(
-            scheme="exact",
-            pay_to=SVM_ADDRESS,
-            price="$0.01",
-            network=SVM_NETWORK,
-        )
-    )
-    premium_accepts.append(
-        PaymentOption(
-            scheme="exact",
-            pay_to=SVM_ADDRESS,
-            price="$0.01",
-            network=SVM_NETWORK,
-        )
-    )
-
-if AVM_ADDRESS:
     weather_accepts.append(
         PaymentOption(
             scheme="exact",

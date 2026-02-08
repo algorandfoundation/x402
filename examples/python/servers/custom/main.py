@@ -29,8 +29,6 @@ from fastapi.responses import JSONResponse
 
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
-from x402.mechanisms.avm.exact import ExactAvmServerScheme
-from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
 from x402.schemas import Network, PaymentPayload, PaymentRequirements, ResourceConfig
 from x402.server import x402ResourceServer
 
@@ -40,11 +38,10 @@ load_dotenv()
 EVM_ADDRESS = os.getenv("EVM_ADDRESS")
 AVM_ADDRESS = os.getenv("AVM_ADDRESS")
 EVM_NETWORK: Network = "eip155:84532"  # Base Sepolia
-AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2  # Algorand Testnet
 FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://x402.org/facilitator")
 
-if not EVM_ADDRESS and not AVM_ADDRESS:
-    print("❌ At least one of EVM_ADDRESS or AVM_ADDRESS is required")
+if not EVM_ADDRESS:
+    print("❌ EVM_ADDRESS environment variable is required")
     sys.exit(1)
 
 if not FACILITATOR_URL:
@@ -53,20 +50,43 @@ if not FACILITATOR_URL:
 
 print("\n🔧 Custom x402 Server Implementation")
 print("This example demonstrates manual payment handling without middleware.\n")
-if EVM_ADDRESS:
-    print(f"✅ EVM Payment address: {EVM_ADDRESS}")
-if AVM_ADDRESS:
-    print(f"✅ AVM Payment address: {AVM_ADDRESS}")
+print(f"✅ Payment address: {EVM_ADDRESS}")
 print(f"✅ Facilitator: {FACILITATOR_URL}\n")
 
 
 # Create facilitator client and resource server
 facilitator_client = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
-resource_server = x402ResourceServer(facilitator_client)
-if EVM_ADDRESS:
-    resource_server = resource_server.register(EVM_NETWORK, ExactEvmServerScheme())
+resource_server = x402ResourceServer(facilitator_client).register(
+    EVM_NETWORK,
+    ExactEvmServerScheme(),
+)
+
+# Build route accepts configs
+route_accepts: list[ResourceConfig] = [
+    ResourceConfig(
+        scheme="exact",
+        price="$0.001",
+        network=EVM_NETWORK,
+        pay_to=EVM_ADDRESS,  # type: ignore
+    ),
+]
+
+# Register AVM (Algorand) support if configured
 if AVM_ADDRESS:
+    from x402.mechanisms.avm.exact import ExactAvmServerScheme
+    from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
+
+    AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2
     resource_server = resource_server.register(AVM_NETWORK, ExactAvmServerScheme())
+
+    route_accepts.append(
+        ResourceConfig(
+            scheme="exact",
+            price="$0.001",
+            network=AVM_NETWORK,
+            pay_to=AVM_ADDRESS,
+        ),
+    )
 
 
 # Route payment configuration
@@ -74,36 +94,18 @@ if AVM_ADDRESS:
 class RoutePaymentConfig:
     """Payment configuration for a route."""
 
-    scheme: str
-    price: str
-    network: Network
-    pay_to: str
+    accepts: list[ResourceConfig]
     description: str
     mime_type: str
 
 
-# Build route configs based on available addresses
-route_configs: dict[str, RoutePaymentConfig] = {}
-
-# Use EVM if available, otherwise use AVM
-if EVM_ADDRESS:
-    route_configs["GET /weather"] = RoutePaymentConfig(
-        scheme="exact",
-        price="$0.001",
-        network=EVM_NETWORK,
-        pay_to=EVM_ADDRESS,
+route_configs: dict[str, RoutePaymentConfig] = {
+    "GET /weather": RoutePaymentConfig(
+        accepts=route_accepts,
         description="Weather data",
         mime_type="application/json",
-    )
-elif AVM_ADDRESS:
-    route_configs["GET /weather"] = RoutePaymentConfig(
-        scheme="exact",
-        price="$0.001",
-        network=AVM_NETWORK,
-        pay_to=AVM_ADDRESS,
-        description="Weather data",
-        mime_type="application/json",
-    )
+    ),
+}
 
 
 # Cache for built payment requirements
@@ -111,7 +113,7 @@ elif AVM_ADDRESS:
 class RouteRequirementsCache:
     """Cache for route payment requirements."""
 
-    cache: dict[str, PaymentRequirements] = field(default_factory=dict)
+    cache: dict[str, list[PaymentRequirements]] = field(default_factory=dict)
 
 
 route_requirements = RouteRequirementsCache()
@@ -146,20 +148,17 @@ async def custom_payment_middleware(request: Request, call_next) -> Response:
 
     # Build PaymentRequirements from config (cached for efficiency)
     if route_key not in route_requirements.cache:
-        config = ResourceConfig(
-            scheme=route_config.scheme,
-            price=route_config.price,
-            network=route_config.network,
-            pay_to=route_config.pay_to,
-        )
-        built_requirements = resource_server.build_payment_requirements(config)
+        built_requirements: list[PaymentRequirements] = []
+        for accept_config in route_config.accepts:
+            built = resource_server.build_payment_requirements(accept_config)
+            built_requirements.extend(built)
         if len(built_requirements) == 0:
             print("❌ Failed to build payment requirements")
             return JSONResponse(
                 status_code=500,
                 content={"error": "Server configuration error"},
             )
-        route_requirements.cache[route_key] = built_requirements[0]
+        route_requirements.cache[route_key] = built_requirements
 
     requirements = route_requirements.cache[route_key]
 
@@ -171,7 +170,7 @@ async def custom_payment_middleware(request: Request, call_next) -> Response:
 
         # Step 2: Return 402 with payment requirements
         payment_required = resource_server.create_payment_required_response(
-            [requirements],
+            requirements,
             resource={
                 "url": str(request.url),
                 "description": route_config.description,
@@ -199,7 +198,22 @@ async def custom_payment_middleware(request: Request, call_next) -> Response:
 
         payment_payload_dict = json.loads(base64.b64decode(payment_header).decode("utf-8"))
         payment_payload = PaymentPayload.model_validate(payment_payload_dict)
-        verify_result = await resource_server.verify_payment(payment_payload, requirements)
+
+        # Find the matching requirement for the payment's network
+        matching_requirement = next(
+            (r for r in requirements if r.network == payment_payload.network), None
+        )
+        if not matching_requirement:
+            print(f"❌ No matching requirement for network: {payment_payload.network}")
+            return JSONResponse(
+                status_code=402,
+                content={
+                    "error": "Invalid Payment",
+                    "reason": f"Network {payment_payload.network} not supported",
+                },
+            )
+
+        verify_result = await resource_server.verify_payment(payment_payload, matching_requirement)
 
         if not verify_result.is_valid:
             print(f"❌ Payment verification failed: {verify_result.invalid_reason}")
@@ -222,7 +236,9 @@ async def custom_payment_middleware(request: Request, call_next) -> Response:
             print("💰 Settling payment on-chain...")
 
             try:
-                settle_result = await resource_server.settle_payment(payment_payload, requirements)
+                settle_result = await resource_server.settle_payment(
+                    payment_payload, matching_requirement
+                )
 
                 print(f"✅ Payment settled: {settle_result.transaction}")
 

@@ -1,10 +1,15 @@
 import { config } from "dotenv";
+import { privateKeyToAccount } from "viem/accounts";
+import { createKeyPairSignerFromBytes } from "@solana/kit";
+import { base58 } from "@scure/base";
 import { x402Client } from "@x402/core/client";
 import {
   decodePaymentRequiredHeader,
   decodePaymentResponseHeader,
   encodePaymentSignatureHeader,
 } from "@x402/core/http";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { ExactSvmScheme } from "@x402/svm/exact/client";
 import type { PaymentRequirements } from "@x402/core/types";
 
 config();
@@ -98,49 +103,38 @@ async function makeRequestWithPayment(client: x402Client, url: string): Promise<
 async function main(): Promise<void> {
   console.log("\n🔧 Custom x402 Client (v2 Protocol)\n");
 
-  // Validate at least one network is configured
-  if (!evmPrivateKey && !svmPrivateKey && !avmPrivateKey) {
-    console.error("❌ At least one of EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY must be set");
+  if (!evmPrivateKey) {
+    console.error("❌ EVM_PRIVATE_KEY required");
     process.exit(1);
   }
 
-  const client = new x402Client();
-  const enabledNetworks: string[] = [];
+  const evmSigner = privateKeyToAccount(evmPrivateKey);
+  const solanaSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
 
-  // Conditionally add EVM support
-  if (evmPrivateKey) {
-    const { privateKeyToAccount } = await import("viem/accounts");
-    const { ExactEvmScheme } = await import("@x402/evm/exact/client");
+  // Custom selector - pick which payment option to use
+  // This selects the second payment option (Solana)
+  // Create your own logic here to select preferred payment option
+  const selectPayment = (_version: number, requirements: PaymentRequirements[]) => {
+    const selected = requirements[1];
+    console.log(`🎯 Selected: ${selected.network} / ${selected.scheme}`);
+    return selected;
+  };
 
-    const evmSigner = privateKeyToAccount(evmPrivateKey);
-    client.register("eip155:*", new ExactEvmScheme(evmSigner));
-    enabledNetworks.push("EVM (eip155:*)");
-  }
+  const client = new x402Client(selectPayment)
+    .register("eip155:*", new ExactEvmScheme(evmSigner))
+    .register("solana:*", new ExactSvmScheme(solanaSigner));
 
-  // Conditionally add SVM support
-  if (svmPrivateKey) {
-    const { ExactSvmScheme } = await import("@x402/svm/exact/client");
-    const { createKeyPairSignerFromBytes } = await import("@solana/kit");
-    const { base58 } = await import("@scure/base");
-
-    const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
-    client.register("solana:*", new ExactSvmScheme(svmSigner));
-    enabledNetworks.push("SVM (solana:*)");
-  }
-
-  // Conditionally add AVM (Algorand) support
+  // Register AVM (Algorand) support if configured
   if (avmPrivateKey) {
     const { ExactAvmScheme } = await import("@x402/avm/exact/client");
     const algosdk = await import("algosdk");
 
-    // Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
     const secretKey = Buffer.from(avmPrivateKey, "base64");
     if (secretKey.length !== 64) {
       throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
     }
     const address = algosdk.encodeAddress(secretKey.slice(32));
 
-    // Implement ClientAvmSigner interface directly
     const avmSigner = {
       address,
       signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
@@ -154,10 +148,9 @@ async function main(): Promise<void> {
     };
 
     client.register("algorand:*", new ExactAvmScheme(avmSigner));
-    enabledNetworks.push("AVM (algorand:*)");
+    console.info(`AVM signer: ${address}`);
   }
 
-  console.log(`Enabled networks: ${enabledNetworks.join(", ")}`);
   console.log("✅ Client ready\n");
 
   await makeRequestWithPayment(client, url);

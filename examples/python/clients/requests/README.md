@@ -29,7 +29,7 @@ uv run python main.py
 The example demonstrates the complete x402 payment flow:
 
 1. **Create x402 client** - Set up the payment client
-2. **Register payment schemes** - Enable EVM, SVM, and/or AVM payments:
+2. **Register payment schemes** - Enable EVM and/or SVM payments:
    - `register_exact_evm_client` for Ethereum-based payments
    - `register_exact_svm_client` for Solana-based payments
    - `register_exact_avm_client` for Algorand-based payments
@@ -63,8 +63,8 @@ register_exact_evm_client(client, EthAccountSigner(account))
 svm_signer = KeypairSigner.from_base58(svm_private_key)
 register_exact_svm_client(client, svm_signer)
 
-# Register AVM (Algorand) payments
-register_exact_avm_client(client, avm_signer)  # See main.py for signer implementation
+# Register AVM (Algorand) payments (optional)
+register_exact_avm_client(client, avm_signer)  # See main.py for signer setup
 
 # Make request - payment handling is automatic
 with x402_requests(client) as session:
@@ -84,7 +84,7 @@ with x402_requests(client) as session:
 |----------|-------------|
 | `EVM_PRIVATE_KEY` | Your EVM private key (with or without 0x prefix) |
 | `SVM_PRIVATE_KEY` | Your Solana private key (base58 encoded) |
-| `AVM_PRIVATE_KEY` | Base64-encoded 64-byte Algorand private key |
+| `AVM_PRIVATE_KEY` | *(Optional)* Base64-encoded 64-byte Algorand private key |
 | `RESOURCE_SERVER_URL` | Base URL of the x402-protected server |
 | `ENDPOINT_PATH` | Path to the protected endpoint |
 

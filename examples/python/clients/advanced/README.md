@@ -5,10 +5,8 @@ This directory contains advanced x402 client examples demonstrating hooks, custo
 ## Prerequisites
 
 - Python 3.11+
-- At least one of:
-  - EVM private key with testnet funds (e.g., Base Sepolia)
-  - SVM private key with devnet funds (Solana)
-  - AVM private key (Base64-encoded 64-byte Algorand key) with testnet funds
+- An EVM private key with testnet funds (e.g., Base Sepolia)
+- *(Optional)* An AVM private key (Base64-encoded 64-byte Algorand key) with testnet funds
 - A running x402 resource server (e.g., the FastAPI example server)
 
 ## Setup
@@ -24,7 +22,7 @@ This directory contains advanced x402 client examples demonstrating hooks, custo
 
    ```bash
    cp .env-local .env
-   # Edit .env and add at least one private key (EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, or AVM_PRIVATE_KEY)
+   # Edit .env and add your private key (EVM_PRIVATE_KEY required, AVM_PRIVATE_KEY optional)
    ```
 
 3. **Start a test server** (in another terminal):

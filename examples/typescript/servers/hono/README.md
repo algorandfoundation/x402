@@ -6,10 +6,7 @@ Hono server demonstrating how to protect API endpoints with a paywall using the 
 import { Hono } from "hono";
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
-import { ExactSvmScheme } from "@x402/svm/exact/server";
-import { ExactAvmScheme } from "@x402/avm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 
 const app = new Hono();
 
@@ -17,19 +14,13 @@ app.use(
   paymentMiddleware(
     {
       "GET /weather": {
-        accepts: [
-          { scheme: "exact", price: "$0.001", network: "eip155:84532", payTo: evmAddress },
-          { scheme: "exact", price: "$0.001", network: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", payTo: svmAddress },
-          { scheme: "exact", price: "$0.001", network: ALGORAND_TESTNET_CAIP2, payTo: avmAddress },
-        ],
+        accepts: { scheme: "exact", price: "$0.001", network: "eip155:84532", payTo: evmAddress },
         description: "Weather data",
         mimeType: "application/json",
       },
     },
     new x402ResourceServer(new HTTPFacilitatorClient({ url: facilitatorUrl }))
-      .register("eip155:84532", new ExactEvmScheme())
-      .register("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", new ExactSvmScheme())
-      .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme()),
+      .register("eip155:84532", new ExactEvmScheme()),
   ),
 );
 
@@ -40,7 +31,7 @@ app.get("/weather", c => c.json({ weather: "sunny", temperature: 70 }));
 
 - Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
 - pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
-- Valid EVM, SVM, and AVM addresses for receiving payments
+- Valid EVM and SVM addresses for receiving payments
 - URL of a facilitator supporting the desired payment network, see [facilitator list](https://www.x402.org/ecosystem?category=facilitators)
 
 ## Setup
@@ -51,14 +42,12 @@ app.get("/weather", c => c.json({ weather: "sunny", temperature: 70 }));
 cp .env-local .env
 ```
 
-and fill the following environment variables:
+and fill required environment variables:
 
-- `FACILITATOR_URL` - Facilitator endpoint URL (required)
-- `EVM_ADDRESS` - Ethereum address to receive payments (optional)
-- `SVM_ADDRESS` - Solana address to receive payments (optional)
+- `FACILITATOR_URL` - Facilitator endpoint URL
+- `EVM_ADDRESS` - Ethereum address to receive payments
+- `SVM_ADDRESS` - Solana address to receive payments
 - `AVM_ADDRESS` - Algorand address to receive payments (optional)
-
-At least one address must be configured. Only networks with configured addresses will be enabled.
 
 2. Install and build all packages from the typescript examples root:
 
@@ -102,7 +91,7 @@ These clients will demonstrate how to:
 
 ## Example Endpoint
 
-The server includes a single example endpoint at `/weather` that requires a payment of 0.001 USDC on Base Sepolia, Solana Devnet, or Algorand Testnet to access. The endpoint returns a simple weather report.
+The server includes a single example endpoint at `/weather` that requires a payment of 0.001 USDC on Base Sepolia or Solana Devnet or Algorand Testnet to access. The endpoint returns a simple weather report.
 
 ## Response Format
 
@@ -254,7 +243,7 @@ The `x402ResourceServer` uses a builder pattern to register payment schemes that
 const resourceServer = new x402ResourceServer(facilitatorClient)
   .register("eip155:*", new ExactEvmScheme()) // All EVM chains
   .register("solana:*", new ExactSvmScheme()) // All SVM chains
-  .register("algorand:*", new ExactAvmScheme()); // All Algorand networks
+  .register("algorand:*", new ExactAvmScheme()) // All Algorand networks
 ```
 
 ## Facilitator Config

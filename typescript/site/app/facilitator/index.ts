@@ -17,122 +17,100 @@ import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 
 /**
- * Initialize and configure the x402 facilitator with EVM, SVM, and AVM support
+ * Initialize and configure the x402 facilitator with EVM and SVM support
  * This is called lazily on first use to support Next.js module loading
  *
  * @returns A configured x402Facilitator instance
  */
 async function createFacilitator(): Promise<x402Facilitator> {
-  // All chains are optional - at least one should be configured
-  const evmPrivateKey = process.env.FACILITATOR_EVM_PRIVATE_KEY;
-  const svmPrivateKey = process.env.FACILITATOR_SVM_PRIVATE_KEY;
+  // Validate required environment variables
+  if (!process.env.FACILITATOR_EVM_PRIVATE_KEY) {
+    throw new Error("❌ FACILITATOR_EVM_PRIVATE_KEY environment variable is required");
+  }
+
+  if (!process.env.FACILITATOR_SVM_PRIVATE_KEY) {
+    throw new Error("❌ FACILITATOR_SVM_PRIVATE_KEY environment variable is required");
+  }
+
+  // Initialize the EVM account from private key
+  const evmAccount = privateKeyToAccount(process.env.FACILITATOR_EVM_PRIVATE_KEY as `0x${string}`);
+
+  // Create a Viem client with both wallet and public capabilities
+  const viemClient = createWalletClient({
+    account: evmAccount,
+    chain: baseSepolia,
+    transport: http(),
+  }).extend(publicActions);
+
+  // Initialize the x402 Facilitator with EVM signer
+  const evmSigner = toFacilitatorEvmSigner({
+    address: evmAccount.address,
+    readContract: (args: {
+      address: `0x${string}`;
+      abi: readonly unknown[];
+      functionName: string;
+      args?: readonly unknown[];
+    }) =>
+      viemClient.readContract({
+        ...args,
+        args: args.args || [],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
+    verifyTypedData: (args: {
+      address: `0x${string}`;
+      domain: Record<string, unknown>;
+      types: Record<string, unknown>;
+      primaryType: string;
+      message: Record<string, unknown>;
+      signature: `0x${string}`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) => viemClient.verifyTypedData(args as any),
+    writeContract: (args: {
+      address: `0x${string}`;
+      abi: readonly unknown[];
+      functionName: string;
+      args: readonly unknown[];
+    }) =>
+      viemClient.writeContract({
+        ...args,
+        args: args.args || [],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
+    sendTransaction: (args: { to: `0x${string}`; data: `0x${string}` }) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      viemClient.sendTransaction({ to: args.to, data: args.data } as any),
+    waitForTransactionReceipt: (args: { hash: `0x${string}` }) =>
+      viemClient.waitForTransactionReceipt(args),
+    getCode: (args: { address: `0x${string}` }) => viemClient.getCode(args),
+  });
+
+  // Initialize the SVM account from private key
+  const svmAccount = await createKeyPairSignerFromBytes(
+    base58.decode(process.env.FACILITATOR_SVM_PRIVATE_KEY as string),
+  );
+
+  // Initialize SVM signer - handles all Solana networks with automatic RPC creation
+  const svmSigner = toFacilitatorSvmSigner(svmAccount);
+
+  // Create and configure the facilitator
+  const facilitator = new x402Facilitator()
+    .register("eip155:84532", new ExactEvmScheme(evmSigner))
+    .registerV1("base-sepolia" as Network, new ExactEvmSchemeV1(evmSigner))
+    .register("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", new ExactSvmScheme(svmSigner))
+    .registerV1("solana-devnet" as Network, new ExactSvmSchemeV1(svmSigner));
+
+  // Register AVM (Algorand) support if configured
   const avmPrivateKey = process.env.FACILITATOR_AVM_PRIVATE_KEY || process.env.PRIVATE_KEY;
-
-  if (!evmPrivateKey && !svmPrivateKey && !avmPrivateKey) {
-    throw new Error(
-      "❌ At least one facilitator key must be configured: FACILITATOR_EVM_PRIVATE_KEY, FACILITATOR_SVM_PRIVATE_KEY, or FACILITATOR_AVM_PRIVATE_KEY",
-    );
-  }
-
-  // Create the base facilitator
-  let facilitator = new x402Facilitator();
-
-  // Add EVM support if private key is available
-  if (evmPrivateKey) {
-    try {
-      const evmAccount = privateKeyToAccount(evmPrivateKey as `0x${string}`);
-
-      const viemClient = createWalletClient({
-        account: evmAccount,
-        chain: baseSepolia,
-        transport: http(),
-      }).extend(publicActions);
-
-      const evmSigner = toFacilitatorEvmSigner({
-        address: evmAccount.address,
-        readContract: (args: {
-          address: `0x${string}`;
-          abi: readonly unknown[];
-          functionName: string;
-          args?: readonly unknown[];
-        }) =>
-          viemClient.readContract({
-            ...args,
-            args: args.args || [],
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any),
-        verifyTypedData: (args: {
-          address: `0x${string}`;
-          domain: Record<string, unknown>;
-          types: Record<string, unknown>;
-          primaryType: string;
-          message: Record<string, unknown>;
-          signature: `0x${string}`;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        }) => viemClient.verifyTypedData(args as any),
-        writeContract: (args: {
-          address: `0x${string}`;
-          abi: readonly unknown[];
-          functionName: string;
-          args: readonly unknown[];
-        }) =>
-          viemClient.writeContract({
-            ...args,
-            args: args.args || [],
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any),
-        sendTransaction: (args: { to: `0x${string}`; data: `0x${string}` }) =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          viemClient.sendTransaction({ to: args.to, data: args.data } as any),
-        waitForTransactionReceipt: (args: { hash: `0x${string}` }) =>
-          viemClient.waitForTransactionReceipt(args),
-        getCode: (args: { address: `0x${string}` }) => viemClient.getCode(args),
-      });
-
-      facilitator = facilitator
-        .register("eip155:84532", new ExactEvmScheme(evmSigner))
-        .registerV1("base-sepolia" as Network, new ExactEvmSchemeV1(evmSigner));
-
-      console.log(`✅ EVM facilitator initialized for address: ${evmAccount.address}`);
-    } catch (error) {
-      console.warn(
-        `⚠️ Failed to initialize EVM facilitator: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-    }
-  }
-
-  // Add SVM support if private key is available
-  if (svmPrivateKey) {
-    try {
-      const svmAccount = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
-      const svmSigner = toFacilitatorSvmSigner(svmAccount);
-
-      facilitator = facilitator
-        .register("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", new ExactSvmScheme(svmSigner))
-        .registerV1("solana-devnet" as Network, new ExactSvmSchemeV1(svmSigner));
-
-      console.log(`✅ SVM facilitator initialized for address: ${svmAccount.address}`);
-    } catch (error) {
-      console.warn(
-        `⚠️ Failed to initialize SVM facilitator: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-    }
-  }
-
-  // Add AVM (Algorand) support if private key is available
   if (avmPrivateKey) {
     try {
-      // Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
       const secretKey = Buffer.from(avmPrivateKey, "base64");
       if (secretKey.length !== 64) {
         throw new Error("FACILITATOR_AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
       }
       const address = algosdk.encodeAddress(secretKey.slice(32));
 
-      // Create Algod client for testnet
       const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
 
-      // Implement FacilitatorAvmSigner interface directly
       const avmSigner = {
         getAddresses: () => [address] as readonly string[],
 
@@ -166,7 +144,7 @@ async function createFacilitator(): Promise<x402Facilitator> {
         },
       };
 
-      facilitator = facilitator
+      facilitator
         .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme(avmSigner))
         .registerV1("algorand-testnet" as Network, new ExactAvmSchemeV1(avmSigner));
 

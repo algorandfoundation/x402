@@ -7,10 +7,7 @@ This is an example client that demonstrates how to use the x402 payment protocol
 - Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
 - pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
 - A running x402 server (you can use the example express server at `examples/typescript/servers/express`)
-- Valid credentials for at least one network:
-  - EVM: Private key (hex string starting with 0x)
-  - SVM: Private key (base58 encoded)
-  - AVM: Base64-encoded 64-byte Algorand private key
+- A valid Ethereum private key and/or Solana private key for making payments
 - Claude Desktop with MCP support
 
 ## Setup
@@ -38,7 +35,7 @@ cd clients/mcp
       "env": {
         "EVM_PRIVATE_KEY": "<private key of a wallet with USDC on Base Sepolia>",
         "SVM_PRIVATE_KEY": "<base58-encoded private key of a Solana wallet with USDC on Devnet>",
-        "AVM_PRIVATE_KEY": "<Base64-encoded 64-byte Algorand private key for a wallet with USDC on Testnet>",
+        "AVM_PRIVATE_KEY": "<Base64-encoded 64-byte Algorand private key for a wallet with USDC on Testnet (optional)>",
         "RESOURCE_SERVER_URL": "http://localhost:4021",
         "ENDPOINT_PATH": "/weather"
       }
@@ -46,8 +43,6 @@ cd clients/mcp
   }
 }
 ```
-
-Configure at least one of `EVM_PRIVATE_KEY`, `SVM_PRIVATE_KEY`, or `AVM_PRIVATE_KEY`. Only networks with configured credentials will be enabled.
 
 3. Make sure your x402 server is running at the URL specified in `RESOURCE_SERVER_URL` (e.g., the example express server at `examples/typescript/servers/express`)
 
@@ -58,11 +53,12 @@ Configure at least one of `EVM_PRIVATE_KEY`, `SVM_PRIVATE_KEY`, or `AVM_PRIVATE_
 ## How It Works
 
 The example demonstrates how to:
-1. Create an x402 client with EVM, SVM, and AVM scheme support
-2. Conditionally register payment schemes using `@x402/evm`, `@x402/svm`, and `@x402/avm`
-3. Set up an MCP server with x402 payment handling
-4. Create a tool that makes paid API requests
-5. Handle responses and errors through the MCP protocol
+1. Create an x402 client with EVM and SVM scheme support
+2. Register payment schemes using `@x402/evm` and `@x402/svm`
+3. Optionally register AVM (Algorand) payment scheme using `@x402/avm`
+4. Set up an MCP server with x402 payment handling
+5. Create a tool that makes paid API requests
+6. Handle responses and errors through the MCP protocol
 
 ## Example Code
 
@@ -71,28 +67,24 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import axios from "axios";
 import { x402Client, wrapAxiosWithPayment } from "@x402/axios";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
+import { registerExactSvmScheme } from "@x402/svm/exact/client";
+import { privateKeyToAccount } from "viem/accounts";
+import { createKeyPairSignerFromBytes } from "@solana/kit";
+import { base58 } from "@scure/base";
 
 // Create x402 client with payment schemes
 const client = new x402Client();
 
-// Conditionally register EVM scheme
-if (EVM_PRIVATE_KEY) {
-  const { registerExactEvmScheme } = await import("@x402/evm/exact/client");
-  const { privateKeyToAccount } = await import("viem/accounts");
-  const evmSigner = privateKeyToAccount(EVM_PRIVATE_KEY);
-  registerExactEvmScheme(client, { signer: evmSigner });
-}
+// Register EVM scheme
+const evmSigner = privateKeyToAccount(EVM_PRIVATE_KEY);
+registerExactEvmScheme(client, { signer: evmSigner });
 
-// Conditionally register SVM scheme
-if (SVM_PRIVATE_KEY) {
-  const { registerExactSvmScheme } = await import("@x402/svm/exact/client");
-  const { createKeyPairSignerFromBytes } = await import("@solana/kit");
-  const { base58 } = await import("@scure/base");
-  const svmSigner = await createKeyPairSignerFromBytes(base58.decode(SVM_PRIVATE_KEY));
-  registerExactSvmScheme(client, { signer: svmSigner });
-}
+// Register SVM scheme
+const svmSigner = await createKeyPairSignerFromBytes(base58.decode(SVM_PRIVATE_KEY));
+registerExactSvmScheme(client, { signer: svmSigner });
 
-// Conditionally register AVM scheme
+// Optionally register AVM (Algorand) scheme
 if (AVM_PRIVATE_KEY) {
   const { registerExactAvmScheme } = await import("@x402/avm/exact/client");
   const algosdk = await import("algosdk");

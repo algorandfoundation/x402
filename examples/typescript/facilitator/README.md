@@ -18,14 +18,12 @@ Express.js facilitator service that verifies and settles payments on-chain for t
 cp .env-local .env
 ```
 
-and fill the following environment variables:
+and fill required environment variables:
 
-- `EVM_PRIVATE_KEY` - Ethereum private key (optional)
-- `SVM_PRIVATE_KEY` - Solana private key (optional)
+- `EVM_PRIVATE_KEY` - Ethereum private key
+- `SVM_PRIVATE_KEY` - Solana private key
 - `AVM_PRIVATE_KEY` - Base64-encoded 64-byte Algorand private key (optional)
 - `PORT` - Server port (optional, defaults to 4022)
-
-At least one network credential must be configured. Only networks with configured keys will be enabled.
 
 2. Install and build all packages from the typescript examples root:
 

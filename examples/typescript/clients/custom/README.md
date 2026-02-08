@@ -6,27 +6,12 @@ Demonstrates how to implement x402 payment handling manually using only the core
 import { x402Client } from "@x402/core/client";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
-import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
-import algosdk from "algosdk";
 
-// Create AVM signer from Base64 private key
-const secretKey = Buffer.from(avmPrivateKey, "base64");
-const avmSigner = {
-  address: algosdk.encodeAddress(secretKey.slice(32)),
-  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-    return txns.map((txn, i) => {
-      if (indexesToSign && !indexesToSign.includes(i)) return null;
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, secretKey);
-      return signed.blob;
-    });
-  },
-};
-
-const client = new x402Client()
-  .register("eip155:*", new ExactEvmScheme(privateKeyToAccount(evmPrivateKey)))
-  .register("algorand:*", new ExactAvmScheme(avmSigner));
+const client = new x402Client().register(
+  "eip155:*",
+  new ExactEvmScheme(privateKeyToAccount(evmPrivateKey)),
+);
 
 // 1. Make initial request
 let response = await fetch(url);
@@ -49,10 +34,7 @@ console.log(await response.json());
 
 - Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
 - pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
-- Valid credentials for at least one network:
-  - EVM: Private key (hex string starting with 0x)
-  - SVM: Private key (base58 encoded)
-  - AVM: Base64-encoded 64-byte Algorand private key
+- Valid EVM and SVM private keys for making payments
 - A running x402 server (see [server examples](../../servers/))
 
 ## Setup
@@ -63,13 +45,11 @@ console.log(await response.json());
 cp .env-local .env
 ```
 
-and configure at least one of the following environment variables:
+and fill required environment variables:
 
-- `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments (optional)
-- `SVM_PRIVATE_KEY` - Solana private key for SVM payments (optional)
+- `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments
+- `SVM_PRIVATE_KEY` - Solana private key for SVM payments
 - `AVM_PRIVATE_KEY` - Base64-encoded 64-byte Algorand private key for AVM payments (optional)
-
-Only networks with configured credentials will be registered.
 
 2. Install and build all packages from the typescript examples root:
 
@@ -121,30 +101,27 @@ pnpm dev
 
 ## Key Implementation Details
 
-### 1. Setting Up the Client with Multi-Network Support
+### 1. Setting Up the Client
 
 ```typescript
 import { x402Client } from "@x402/core/client";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { ExactSvmScheme } from "@x402/svm/exact/client";
+import { privateKeyToAccount } from "viem/accounts";
 
-const client = new x402Client();
+const evmSigner = privateKeyToAccount(evmPrivateKey);
+const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
 
-// Conditionally add EVM support
-if (evmPrivateKey) {
-  const { ExactEvmScheme } = await import("@x402/evm/exact/client");
-  const { privateKeyToAccount } = await import("viem/accounts");
-  client.register("eip155:*", new ExactEvmScheme(privateKeyToAccount(evmPrivateKey)));
-}
+// Optional: custom selector to pick which payment option to use
+const selectPayment = (_version: number, requirements: PaymentRequirements[]) => {
+  return requirements[1]; // Select second option (e.g., Solana)
+};
 
-// Conditionally add SVM support
-if (svmPrivateKey) {
-  const { ExactSvmScheme } = await import("@x402/svm/exact/client");
-  const { createKeyPairSignerFromBytes } = await import("@solana/kit");
-  const { base58 } = await import("@scure/base");
-  const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
-  client.register("solana:*", new ExactSvmScheme(svmSigner));
-}
+const client = new x402Client(selectPayment)
+  .register("eip155:*", new ExactEvmScheme(evmSigner))
+  .register("solana:*", new ExactSvmScheme(svmSigner));
 
-// Conditionally add AVM (Algorand) support
+// Optionally add AVM (Algorand) support
 if (avmPrivateKey) {
   const { ExactAvmScheme } = await import("@x402/avm/exact/client");
   const algosdk = await import("algosdk");
@@ -211,10 +188,10 @@ const settlement = decodePaymentResponseHeader(settlementHeader);
 | Aspect            | With Wrapper (@x402/fetch) | Custom Implementation |
 | ----------------- | -------------------------- | --------------------- |
 | Code Complexity   | ~10 lines                  | ~100 lines            |
-| Automatic Retry   | Yes                        | Manual                |
-| Error Handling    | Built-in                   | You implement         |
-| Header Management | Automatic                  | Manual                |
-| Flexibility       | Limited                    | Complete control      |
+| Automatic Retry   | ✅ Yes                     | ❌ Manual             |
+| Error Handling    | ✅ Built-in                | ❌ You implement      |
+| Header Management | ✅ Automatic               | ❌ Manual             |
+| Flexibility       | Limited                    | ✅ Complete control   |
 
 ## When to Use Custom Implementation
 
