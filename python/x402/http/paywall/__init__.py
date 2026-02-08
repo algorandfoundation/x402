@@ -465,7 +465,7 @@ class PaywallProvider:
 
         if not self.handlers:
             raise ValueError(
-                "No paywall handlers registered. Use .with_network(evm_paywall) or .with_network(svm_paywall)"
+                "No paywall handlers registered. Use .with_network(evm_paywall), .with_network(svm_paywall), or .with_network(avm_paywall)"
             )
 
         # Merge builder config with runtime config (runtime takes precedence)

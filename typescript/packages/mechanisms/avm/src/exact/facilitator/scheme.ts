@@ -6,6 +6,7 @@
 
 import algosdk from "algosdk";
 import type {
+  Network,
   PaymentPayload,
   PaymentRequirements,
   SchemeNetworkFacilitator,
@@ -39,6 +40,7 @@ export const VerifyErrorReason = {
   PAYMENT_NOT_SIGNED: "Payment transaction is not signed",
   SIMULATION_FAILED: "Transaction simulation failed",
   // Security error reasons
+  UNSIGNED_NON_FACILITATOR_TXN: "Unsigned transaction from non-facilitator address",
   SECURITY_REKEY_NOT_ALLOWED: "Rekey transactions are not allowed",
   SECURITY_CLOSE_TO_NOT_ALLOWED: "Close-to transactions are not allowed",
   SECURITY_KEYREG_NOT_ALLOWED: "Key registration transactions are not allowed",
@@ -95,10 +97,10 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
    *
    * Verification steps:
    * 1. Validate payload format and structure
-   * 2. Check group size limits
-   * 3. Decode all transactions
+   * 2. Decode and validate transaction group
+   * 3. Apply security constraints
    * 4. Verify payment transaction (amount, receiver, asset)
-   * 5. Verify fee payer transactions (if any)
+   * 5. Prepare signed group (verify + sign fee payers)
    * 6. Simulate transaction group
    *
    * @param payload - The payment payload to verify
@@ -111,194 +113,176 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
   ): Promise<VerifyResponse> {
     const rawPayload = payload.payload as unknown;
 
-    // Log incoming payload for debugging
-    console.log("[x402 AVM Facilitator] Verify request:", {
-      x402Version: payload.x402Version,
-      requirements: {
-        scheme: requirements.scheme,
-        network: requirements.network,
-        amount: requirements.amount,
-        asset: requirements.asset,
-        payTo: requirements.payTo,
-      },
-      hasPayload: !!rawPayload,
-      payloadKeys: rawPayload && typeof rawPayload === "object" ? Object.keys(rawPayload) : [],
-    });
-
-    // Validate payload format
     if (!isExactAvmPayload(rawPayload)) {
-      console.log("[x402 AVM Facilitator] Invalid payload format:", rawPayload);
-      return {
-        isValid: false,
-        invalidReason: VerifyErrorReason.INVALID_PAYLOAD_FORMAT,
-      };
+      return { isValid: false, invalidReason: VerifyErrorReason.INVALID_PAYLOAD_FORMAT };
     }
 
-    const avmPayload = rawPayload as ExactAvmPayloadV2;
-    const { paymentGroup, paymentIndex } = avmPayload;
+    const { paymentGroup, paymentIndex } = rawPayload as ExactAvmPayloadV2;
 
-    // Check group size
     if (paymentGroup.length > MAX_ATOMIC_GROUP_SIZE) {
-      return {
-        isValid: false,
-        invalidReason: VerifyErrorReason.GROUP_SIZE_EXCEEDED,
-      };
+      return { isValid: false, invalidReason: VerifyErrorReason.GROUP_SIZE_EXCEEDED };
     }
-
-    // Check payment index bounds
     if (paymentIndex < 0 || paymentIndex >= paymentGroup.length) {
-      return {
-        isValid: false,
-        invalidReason: VerifyErrorReason.INVALID_PAYMENT_INDEX,
-      };
+      return { isValid: false, invalidReason: VerifyErrorReason.INVALID_PAYMENT_INDEX };
     }
 
-    // Decode all transactions (handles both signed and unsigned for fee abstraction)
-    const decodedTxns: algosdk.SignedTransaction[] = [];
+    const facilitatorAddresses = this.signer.getAddresses();
+
+    // Decode all transactions and validate group structure
+    const decoded = this.decodeTransactionGroup(paymentGroup, facilitatorAddresses);
+    if ("error" in decoded) return decoded.error;
+
+    // Security constraints on all transactions
+    const securityCheck = this.verifySecurityConstraints(decoded.txns);
+    if (!securityCheck.isValid) return securityCheck;
+
+    // Payment transaction correctness
+    const paymentCheck = this.verifyPaymentTransaction(
+      decoded.txns[paymentIndex], requirements, paymentGroup[paymentIndex],
+    );
+    if (!paymentCheck.isValid) return paymentCheck;
+
+    // Verify fee payers and sign them for simulation
+    const prepared = await this.prepareSignedGroup(decoded.txns, paymentGroup);
+    if ("error" in prepared) return prepared.error;
+
+    // Simulate the assembled group
+    return this.simulateTransactionGroup(prepared.signedTxns, requirements.network);
+  }
+
+  /**
+   * Decodes all transactions in the group and validates structure.
+   *
+   * - Signed transactions are decoded as-is
+   * - Unsigned transactions are only accepted from facilitator addresses (fee payers)
+   * - Verifies group ID consistency across all transactions
+   */
+  private decodeTransactionGroup(
+    paymentGroup: string[],
+    facilitatorAddresses: readonly string[],
+  ): { txns: algosdk.SignedTransaction[] } | { error: VerifyResponse } {
+    const txns: algosdk.SignedTransaction[] = [];
+
     for (let i = 0; i < paymentGroup.length; i++) {
       try {
-        const encoded = paymentGroup[i];
-        const bytes = decodeTransaction(encoded);
+        const bytes = decodeTransaction(paymentGroup[i]);
 
-        // Try to decode as signed transaction first
         try {
-          const signedTxn = algosdk.decodeSignedTransaction(bytes);
-          decodedTxns.push(signedTxn);
+          txns.push(algosdk.decodeSignedTransaction(bytes));
         } catch {
-          // If not signed, decode as unsigned and wrap for simulation
-          // This handles fee payer transactions that the facilitator will sign
+          // Unsigned transaction — only the facilitator's fee payer txn should be unsigned
           const unsignedTxn = algosdk.decodeUnsignedTransaction(bytes);
+          const sender = algosdk.encodeAddress(unsignedTxn.sender.publicKey);
+
+          if (!facilitatorAddresses.includes(sender)) {
+            return {
+              error: {
+                isValid: false,
+                invalidReason: `${VerifyErrorReason.UNSIGNED_NON_FACILITATOR_TXN}: transaction at index ${i} from ${sender}`,
+              },
+            };
+          }
+
           const encodedForSimulate = algosdk.encodeUnsignedSimulateTransaction(unsignedTxn);
-          const wrappedTxn = algosdk.decodeSignedTransaction(encodedForSimulate);
-          decodedTxns.push(wrappedTxn);
+          txns.push(algosdk.decodeSignedTransaction(encodedForSimulate));
         }
-      } catch (error) {
-        console.error(`[x402 AVM Facilitator] Failed to decode transaction at index ${i}:`, error);
+      } catch {
         return {
-          isValid: false,
-          invalidReason: `${VerifyErrorReason.INVALID_TRANSACTION}: Failed to decode transaction at index ${i}`,
+          error: {
+            isValid: false,
+            invalidReason: `${VerifyErrorReason.INVALID_TRANSACTION}: Failed to decode transaction at index ${i}`,
+          },
         };
       }
     }
 
     // Verify group ID consistency
-    if (decodedTxns.length > 1) {
-      const firstGroup = decodedTxns[0].txn.group;
+    if (txns.length > 1) {
+      const firstGroup = txns[0].txn.group;
       const firstGroupId = firstGroup
         ? Buffer.from(firstGroup).toString("base64")
         : null;
 
-      for (let i = 1; i < decodedTxns.length; i++) {
-        const group = decodedTxns[i].txn.group;
+      for (let i = 1; i < txns.length; i++) {
+        const group = txns[i].txn.group;
         const groupId = group
           ? Buffer.from(group).toString("base64")
           : null;
         if (groupId !== firstGroupId) {
           return {
-            isValid: false,
-            invalidReason: VerifyErrorReason.INVALID_GROUP_ID,
+            error: { isValid: false, invalidReason: VerifyErrorReason.INVALID_GROUP_ID },
           };
         }
       }
     }
 
-    // Apply security checks to ALL transactions in the group
-    const securityCheck = this.verifySecurityConstraints(decodedTxns);
-    if (!securityCheck.isValid) {
-      console.log("[x402 AVM Facilitator] Security check failed:", securityCheck.invalidReason);
-      return securityCheck;
-    }
-    console.log("[x402 AVM Facilitator] Security checks passed for all transactions");
+    return { txns };
+  }
 
-    // Verify payment transaction
-    const paymentTxn = decodedTxns[paymentIndex];
-    console.log("[x402 AVM Facilitator] Verifying payment transaction:", {
-      paymentIndex,
-      txnType: paymentTxn.txn.type,
-      sender: algosdk.encodeAddress(paymentTxn.txn.sender.publicKey),
-    });
-
-    const paymentVerification = this.verifyPaymentTransaction(
-      paymentTxn,
-      requirements,
-      paymentGroup[paymentIndex],
-    );
-    if (!paymentVerification.isValid) {
-      console.log("[x402 AVM Facilitator] Payment verification failed:", paymentVerification.invalidReason);
-      return paymentVerification;
-    }
-    console.log("[x402 AVM Facilitator] Payment transaction verified successfully");
-
-    // Verify fee payer transactions and prepare signing
+  /**
+   * Verifies fee payer transactions and signs them, returning the assembled group
+   * ready for simulation or submission.
+   */
+  private async prepareSignedGroup(
+    decodedTxns: algosdk.SignedTransaction[],
+    paymentGroup: string[],
+  ): Promise<{ signedTxns: Uint8Array[] } | { error: VerifyResponse }> {
     const facilitatorAddresses = this.signer.getAddresses();
     const signedTxns: Uint8Array[] = [];
 
     for (let i = 0; i < decodedTxns.length; i++) {
-      const stxn = decodedTxns[i];
-      const txn = stxn.txn;
+      const txn = decodedTxns[i].txn;
       const sender = algosdk.encodeAddress(txn.sender.publicKey);
-      const txnBytes = decodeTransaction(paymentGroup[i]);
 
-      // Check if this is a facilitator's transaction (fee payer)
       if (facilitatorAddresses.includes(sender)) {
-        const feePayerVerification = this.verifyFeePayerTransaction(txn);
-        if (!feePayerVerification.isValid) {
-          return feePayerVerification;
-        }
+        const feeCheck = this.verifyFeePayerTransaction(txn);
+        if (!feeCheck.isValid) return { error: feeCheck };
 
-        // Sign the fee payer transaction
         try {
-          const unsignedTxn = txn.toByte();
-          const signedTxn = await this.signer.signTransaction(unsignedTxn, sender);
+          const signedTxn = await this.signer.signTransaction(txn.toByte(), sender);
           signedTxns.push(signedTxn);
         } catch (error) {
           return {
-            isValid: false,
-            invalidReason: `Failed to sign fee payer transaction: ${error instanceof Error ? error.message : "Unknown error"}`,
+            error: {
+              isValid: false,
+              invalidReason: `Failed to sign fee payer transaction: ${error instanceof Error ? error.message : "Unknown error"}`,
+            },
           };
         }
       } else {
-        // Not a fee payer transaction, use as-is
-        signedTxns.push(txnBytes);
+        signedTxns.push(decodeTransaction(paymentGroup[i]));
       }
     }
 
-    // Simulate transaction group
-    console.log("[x402 AVM Facilitator] Simulating transaction group:", {
-      txnCount: signedTxns.length,
-      network: requirements.network,
-    });
+    return { signedTxns };
+  }
 
+  /**
+   * Simulates the transaction group and returns the verification result.
+   */
+  private async simulateTransactionGroup(
+    signedTxns: Uint8Array[],
+    network: Network,
+  ): Promise<VerifyResponse> {
     try {
       const simResult = await this.signer.simulateTransactions(
-        signedTxns,
-        requirements.network,
+        signedTxns, network,
       ) as { txnGroups?: Array<{ failureMessage?: string }> };
 
-      // Check simulation result
-      if (
-        simResult.txnGroups &&
-        simResult.txnGroups[0] &&
-        simResult.txnGroups[0].failureMessage
-      ) {
-        console.log("[x402 AVM Facilitator] Simulation failed:", simResult.txnGroups[0].failureMessage);
+      if (simResult.txnGroups?.[0]?.failureMessage) {
         return {
           isValid: false,
           invalidReason: `${VerifyErrorReason.SIMULATION_FAILED}: ${simResult.txnGroups[0].failureMessage}`,
         };
       }
 
-      console.log("[x402 AVM Facilitator] Simulation passed");
+      return { isValid: true };
     } catch (error) {
-      console.log("[x402 AVM Facilitator] Simulation error:", error instanceof Error ? error.message : error);
       return {
         isValid: false,
         invalidReason: `${VerifyErrorReason.SIMULATION_FAILED}: ${error instanceof Error ? error.message : "Unknown error"}`,
       };
     }
-
-    console.log("[x402 AVM Facilitator] Verification successful");
-    return { isValid: true };
   }
 
   /**
@@ -408,14 +392,6 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
   ): VerifyResponse {
     const txn = stxn.txn;
 
-    // Debug: Log all transaction properties
-    console.log("[x402 AVM Facilitator] Transaction details:", {
-      type: txn.type,
-      allKeys: Object.keys(txn),
-      // Log the raw transaction to see actual property names
-      rawTxn: JSON.stringify(txn, (_, v) => typeof v === 'bigint' ? v.toString() : v),
-    });
-
     // Must be an asset transfer
     if (txn.type !== "axfer") {
       return {
@@ -443,14 +419,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
       };
     }
 
-    const assetAmount = assetTransfer.amount ?? BigInt(0);
-    const amount = assetAmount.toString();
-
-    console.log("[x402 AVM Facilitator] Amount check:", {
-      txnAssetAmount: assetAmount.toString(),
-      requiredAmount: requirements.amount,
-      match: amount === requirements.amount,
-    });
+    const amount = (assetTransfer.amount ?? BigInt(0)).toString();
 
     if (amount !== requirements.amount) {
       return {
@@ -464,12 +433,6 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
       ? algosdk.encodeAddress(assetTransfer.receiver.publicKey)
       : "";
 
-    console.log("[x402 AVM Facilitator] Receiver check:", {
-      txnReceiver: receiver,
-      requiredPayTo: requirements.payTo,
-      match: receiver === requirements.payTo,
-    });
-
     if (receiver !== requirements.payTo) {
       return {
         isValid: false,
@@ -479,12 +442,6 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
 
     // Verify asset
     const assetId = assetTransfer.assetIndex?.toString() ?? "";
-
-    console.log("[x402 AVM Facilitator] Asset check:", {
-      txnAssetIndex: assetId,
-      requiredAsset: requirements.asset,
-      match: assetId === requirements.asset,
-    });
 
     if (assetId !== requirements.asset) {
       return {
@@ -666,8 +623,6 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
           };
         }
       }
-
-      console.log("[x402 AVM Facilitator] Validated rekey sandwich pattern");
     }
 
     return { isValid: true };

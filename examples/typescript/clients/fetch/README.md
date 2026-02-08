@@ -16,22 +16,19 @@ const client = new x402Client();
 registerExactEvmScheme(client, { signer: privateKeyToAccount(process.env.EVM_PRIVATE_KEY) });
 registerExactSvmScheme(client, { signer: (await createKeyPairSignerFromBytes(base58.decode(process.env.SVM_PRIVATE_KEY))) });
 
-// Optionally register AVM (Algorand) support
-if (process.env.AVM_PRIVATE_KEY) {
-  const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY, "base64");
-  const avmSigner = {
-    address: algosdk.encodeAddress(secretKey.slice(32)),
-    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return txns.map((txn, i) => {
-        if (indexesToSign && !indexesToSign.includes(i)) return null;
-        const decoded = algosdk.decodeUnsignedTransaction(txn);
-        const signed = algosdk.signTransaction(decoded, secretKey);
-        return signed.blob;
-      });
-    },
-  };
-  registerExactAvmScheme(client, { signer: avmSigner });
-}
+const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY, "base64");
+const avmSigner = {
+  address: algosdk.encodeAddress(secretKey.slice(32)),
+  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+    return txns.map((txn, i) => {
+      if (indexesToSign && !indexesToSign.includes(i)) return null;
+      const decoded = algosdk.decodeUnsignedTransaction(txn);
+      const signed = algosdk.signTransaction(decoded, secretKey);
+      return signed.blob;
+    });
+  },
+};
+registerExactAvmScheme(client, { signer: avmSigner });
 
 const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 
@@ -66,7 +63,7 @@ Required environment variables:
 
 - `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments
 - `SVM_PRIVATE_KEY` - Solana private key for SVM payments
-- `AVM_PRIVATE_KEY` - Base64-encoded 64-byte Algorand private key for AVM payments (optional)
+- `AVM_PRIVATE_KEY` - Base64-encoded 64-byte Algorand private key for AVM payments
 
 3. Run the client:
 

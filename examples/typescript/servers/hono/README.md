@@ -31,7 +31,7 @@ app.get("/weather", c => c.json({ weather: "sunny", temperature: 70 }));
 
 - Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
 - pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
-- Valid EVM and SVM addresses for receiving payments
+- Valid EVM, SVM, and AVM addresses for receiving payments
 - URL of a facilitator supporting the desired payment network, see [facilitator list](https://www.x402.org/ecosystem?category=facilitators)
 
 ## Setup
@@ -47,7 +47,7 @@ and fill required environment variables:
 - `FACILITATOR_URL` - Facilitator endpoint URL
 - `EVM_ADDRESS` - Ethereum address to receive payments
 - `SVM_ADDRESS` - Solana address to receive payments
-- `AVM_ADDRESS` - Algorand address to receive payments (optional)
+- `AVM_ADDRESS` - Algorand address to receive payments
 
 2. Install and build all packages from the typescript examples root:
 

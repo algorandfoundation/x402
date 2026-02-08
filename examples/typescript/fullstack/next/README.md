@@ -19,12 +19,10 @@ cp .env-local .env
 
 and fill the following environment variables:
 
-- `FACILITATOR_URL` - Facilitator endpoint URL (required)
-- `EVM_ADDRESS` - Ethereum address to receive payments (optional)
-- `SVM_ADDRESS` - Solana address to receive payments (optional)
-- `AVM_ADDRESS` - Algorand address to receive payments (optional)
-
-At least one address must be configured. Only networks with configured addresses will be enabled.
+- `FACILITATOR_URL` - Facilitator endpoint URL
+- `EVM_ADDRESS` - Ethereum address to receive payments
+- `SVM_ADDRESS` - Solana address to receive payments
+- `AVM_ADDRESS` - Algorand address to receive payments
 
 2. Install and build all packages from the typescript examples root:
 ```bash

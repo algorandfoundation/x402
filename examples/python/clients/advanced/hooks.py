@@ -14,9 +14,11 @@ This is an advanced feature useful for:
 """
 
 import asyncio
+import base64
 import os
 import sys
 
+import algosdk
 from dotenv import load_dotenv
 from eth_account import Account
 
@@ -25,6 +27,8 @@ from x402.http import x402HTTPClient
 from x402.http.clients import x402HttpxClient
 from x402.mechanisms.evm import EthAccountSigner
 from x402.mechanisms.evm.exact.register import register_exact_evm_client
+from x402.mechanisms.svm import KeypairSigner
+from x402.mechanisms.svm.exact.register import register_exact_svm_client
 from x402.mechanisms.avm.exact.register import register_exact_avm_client
 from x402.schemas import (
     AbortResult,
@@ -90,69 +94,71 @@ async def payment_creation_failure_hook(
     return None  # Don't recover, let it fail
 
 
-async def run_hooks_example(private_key: str, url: str, avm_private_key: str | None = None) -> None:
+async def run_hooks_example(evm_private_key: str, url: str, svm_private_key: str, avm_private_key: str) -> None:
     """Run the hooks example.
 
     Args:
-        private_key: EVM private key for signing.
+        evm_private_key: EVM private key for signing.
         url: URL to make the request to.
-        avm_private_key: Base64-encoded 64-byte Algorand private key (optional).
+        svm_private_key: Base58-encoded Solana private key.
+        avm_private_key: Base64-encoded 64-byte Algorand private key.
     """
     print("🔧 Creating client with payment lifecycle hooks...\n")
 
-    account = Account.from_key(private_key)
-    print(f"Wallet address: {account.address}\n")
+    account = Account.from_key(evm_private_key)
+    print(f"EVM wallet address: {account.address}\n")
 
     # Create client with hooks registered via builder pattern
     client = x402Client()
     register_exact_evm_client(client, EthAccountSigner(account))
 
-    # Register AVM (Algorand) payment scheme if private key provided
-    if avm_private_key:
-        import base64
-        import algosdk
+    # Register SVM (Solana) payment scheme
+    svm_signer = KeypairSigner.from_base58(svm_private_key)
+    register_exact_svm_client(client, svm_signer)
+    print(f"SVM wallet address: {svm_signer.address}")
 
-        # Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
-        secret_key = base64.b64decode(avm_private_key)
-        if len(secret_key) != 64:
-            raise ValueError("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key")
-        address = algosdk.encoding.encode_address(secret_key[32:])
+    # Register AVM (Algorand) payment scheme
+    # Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
+    secret_key = base64.b64decode(avm_private_key)
+    if len(secret_key) != 64:
+        raise ValueError("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key")
+    avm_address = algosdk.encoding.encode_address(secret_key[32:])
 
-        # Implement ClientAvmSigner interface directly
-        class AlgorandSigner:
-            def __init__(self, sk: bytes, addr: str):
-                self._secret_key = sk
-                self._address = addr
+    # Implement ClientAvmSigner interface directly
+    class AlgorandSigner:
+        def __init__(self, sk: bytes, addr: str):
+            self._secret_key = sk
+            self._address = addr
 
-            @property
-            def address(self) -> str:
-                return self._address
+        @property
+        def address(self) -> str:
+            return self._address
 
-            def sign_transactions(
-                self,
-                unsigned_txns: list[bytes],
-                indexes_to_sign: list[int],
-            ) -> list[bytes | None]:
-                # algosdk Python API uses base64 strings, but the SDK protocol
-                # passes raw msgpack bytes. Convert at the boundary.
-                sk_b64 = base64.b64encode(self._secret_key).decode()
-                result = []
-                for i, txn_bytes in enumerate(unsigned_txns):
-                    if i in indexes_to_sign:
-                        txn = algosdk.encoding.msgpack_decode(
-                            base64.b64encode(txn_bytes).decode()
-                        )
-                        signed = txn.sign(sk_b64)
-                        result.append(
-                            base64.b64decode(algosdk.encoding.msgpack_encode(signed))
-                        )
-                    else:
-                        result.append(None)
-                return result
+        def sign_transactions(
+            self,
+            unsigned_txns: list[bytes],
+            indexes_to_sign: list[int],
+        ) -> list[bytes | None]:
+            # algosdk Python API uses base64 strings, but the SDK protocol
+            # passes raw msgpack bytes. Convert at the boundary.
+            sk_b64 = base64.b64encode(self._secret_key).decode()
+            result = []
+            for i, txn_bytes in enumerate(unsigned_txns):
+                if i in indexes_to_sign:
+                    txn = algosdk.encoding.msgpack_decode(
+                        base64.b64encode(txn_bytes).decode()
+                    )
+                    signed = txn.sign(sk_b64)
+                    result.append(
+                        base64.b64decode(algosdk.encoding.msgpack_encode(signed))
+                    )
+                else:
+                    result.append(None)
+            return result
 
-        avm_signer = AlgorandSigner(secret_key, address)
-        register_exact_avm_client(client, avm_signer)
-        print(f"AVM wallet address: {address}")
+    avm_signer = AlgorandSigner(secret_key, avm_address)
+    register_exact_avm_client(client, avm_signer)
+    print(f"AVM wallet address: {avm_address}")
 
     # Register lifecycle hooks
     client.on_before_payment_creation(before_payment_creation_hook)
@@ -185,18 +191,27 @@ async def run_hooks_example(private_key: str, url: str, avm_private_key: str | N
 
 async def main() -> None:
     """Main entry point."""
-    private_key = os.getenv("EVM_PRIVATE_KEY")
+    evm_private_key = os.getenv("EVM_PRIVATE_KEY")
+    svm_private_key = os.getenv("SVM_PRIVATE_KEY")
+    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     base_url = os.getenv("RESOURCE_SERVER_URL", "http://localhost:4021")
     endpoint_path = os.getenv("ENDPOINT_PATH", "/weather")
 
-    if not private_key:
-        print("Error: EVM_PRIVATE_KEY environment variable is required")
+    missing = []
+    if not evm_private_key:
+        missing.append("EVM_PRIVATE_KEY")
+    if not svm_private_key:
+        missing.append("SVM_PRIVATE_KEY")
+    if not avm_private_key:
+        missing.append("AVM_PRIVATE_KEY")
+
+    if missing:
+        print(f"Error: Missing required environment variables: {', '.join(missing)}")
         print("Please copy .env-local to .env and fill in the values.")
         sys.exit(1)
 
-    avm_private_key = os.getenv("AVM_PRIVATE_KEY")
     url = f"{base_url}{endpoint_path}"
-    await run_hooks_example(private_key, url, avm_private_key=avm_private_key)
+    await run_hooks_example(evm_private_key, url, svm_private_key, avm_private_key)
 
 
 if __name__ == "__main__":

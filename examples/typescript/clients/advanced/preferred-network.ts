@@ -2,6 +2,8 @@ import { privateKeyToAccount } from "viem/accounts";
 import { x402Client, type PaymentRequirements } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
+import { ExactAvmScheme } from "@x402/avm/exact/client";
+import algosdk from "algosdk";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { base58 } from "@scure/base";
 import { x402HTTPClient, wrapFetchWithPayment } from "@x402/fetch";
@@ -24,7 +26,7 @@ import { x402HTTPClient, wrapFetchWithPayment } from "@x402/fetch";
 export async function runPreferredNetworkExample(
   evmPrivateKey: `0x${string}`,
   svmPrivateKey: string,
-  avmPrivateKey: string | undefined,
+  avmPrivateKey: string,
   url: string,
 ): Promise<void> {
   console.log("🎯 Creating client with preferred network selection...\n");
@@ -71,35 +73,27 @@ export async function runPreferredNetworkExample(
     return options[0];
   };
 
+  const secretKey = Buffer.from(avmPrivateKey, "base64");
+  if (secretKey.length !== 64) {
+    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
+  }
+  const address = algosdk.encodeAddress(secretKey.slice(32));
+  const avmSigner = {
+    address,
+    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+      return txns.map((txn, i) => {
+        if (indexesToSign && !indexesToSign.includes(i)) return null;
+        const decoded = algosdk.decodeUnsignedTransaction(txn);
+        const signed = algosdk.signTransaction(decoded, secretKey);
+        return signed.blob;
+      });
+    },
+  };
+
   const client = new x402Client(preferredNetworkSelector)
     .register("eip155:*", new ExactEvmScheme(evmSigner))
-    .register("solana:*", new ExactSvmScheme(svmSigner));
-
-  // Register AVM (Algorand) support if configured
-  if (avmPrivateKey) {
-    const { ExactAvmScheme } = await import("@x402/avm/exact/client");
-    const algosdk = await import("algosdk");
-
-    const secretKey = Buffer.from(avmPrivateKey, "base64");
-    if (secretKey.length !== 64) {
-      throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
-    }
-    const address = algosdk.encodeAddress(secretKey.slice(32));
-
-    const avmSigner = {
-      address,
-      signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-        return txns.map((txn, i) => {
-          if (indexesToSign && !indexesToSign.includes(i)) return null;
-          const decoded = algosdk.decodeUnsignedTransaction(txn);
-          const signed = algosdk.signTransaction(decoded, secretKey);
-          return signed.blob;
-        });
-      },
-    };
-
-    client.register("algorand:*", new ExactAvmScheme(avmSigner));
-  }
+    .register("solana:*", new ExactSvmScheme(svmSigner))
+    .register("algorand:*", new ExactAvmScheme(avmSigner));
 
   const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 

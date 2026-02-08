@@ -2,6 +2,8 @@ import { config } from "dotenv";
 import express, { Request, Response, NextFunction } from "express";
 import { x402ResourceServer, HTTPFacilitatorClient, ResourceConfig } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { ExactAvmScheme } from "@x402/avm/exact/server";
+import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 import type { PaymentRequirements } from "@x402/core/types";
 
 config();
@@ -27,11 +29,16 @@ config();
  */
 
 const evmAddress = process.env.EVM_ADDRESS as `0x${string}`;
-const avmAddress = process.env.AVM_ADDRESS;
+const avmAddress = process.env.AVM_ADDRESS as string;
 const facilitatorUrl = process.env.FACILITATOR_URL;
 
 if (!evmAddress) {
   console.error("❌ EVM_ADDRESS environment variable is required");
+  process.exit(1);
+}
+
+if (!avmAddress) {
+  console.error("❌ AVM_ADDRESS environment variable is required");
   process.exit(1);
 }
 
@@ -47,10 +54,9 @@ console.log(`✅ Facilitator: ${facilitatorUrl}\n`);
 
 // Create facilitator client and resource server
 const facilitatorClient = new HTTPFacilitatorClient({ url: facilitatorUrl });
-const resourceServer = new x402ResourceServer(facilitatorClient).register(
-  "eip155:84532",
-  new ExactEvmScheme(),
-);
+const resourceServer = new x402ResourceServer(facilitatorClient)
+  .register("eip155:84532", new ExactEvmScheme())
+  .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
 
 // Build route accepts configs
 const routeAccepts: ResourceConfig[] = [
@@ -60,21 +66,13 @@ const routeAccepts: ResourceConfig[] = [
     network: "eip155:84532",
     payTo: evmAddress,
   },
-];
-
-// Register AVM (Algorand) support if configured
-if (avmAddress) {
-  const { ExactAvmScheme } = await import("@x402/avm/exact/server");
-  const { ALGORAND_TESTNET_CAIP2 } = await import("@x402/avm");
-
-  routeAccepts.push({
+  {
     scheme: "exact",
     price: "$0.001",
     network: ALGORAND_TESTNET_CAIP2,
     payTo: avmAddress,
-  });
-  resourceServer.register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
-}
+  },
+];
 
 // Define route configurations (will be converted to PaymentRequirements at runtime)
 interface RoutePaymentConfig {

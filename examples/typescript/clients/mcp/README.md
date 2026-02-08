@@ -35,7 +35,7 @@ cd clients/mcp
       "env": {
         "EVM_PRIVATE_KEY": "<private key of a wallet with USDC on Base Sepolia>",
         "SVM_PRIVATE_KEY": "<base58-encoded private key of a Solana wallet with USDC on Devnet>",
-        "AVM_PRIVATE_KEY": "<Base64-encoded 64-byte Algorand private key for a wallet with USDC on Testnet (optional)>",
+        "AVM_PRIVATE_KEY": "<Base64-encoded 64-byte Algorand private key for a wallet with USDC on Testnet>",
         "RESOURCE_SERVER_URL": "http://localhost:4021",
         "ENDPOINT_PATH": "/weather"
       }
@@ -55,7 +55,7 @@ cd clients/mcp
 The example demonstrates how to:
 1. Create an x402 client with EVM and SVM scheme support
 2. Register payment schemes using `@x402/evm` and `@x402/svm`
-3. Optionally register AVM (Algorand) payment scheme using `@x402/avm`
+3. Register AVM (Algorand) payment scheme using `@x402/avm`
 4. Set up an MCP server with x402 payment handling
 5. Create a tool that makes paid API requests
 6. Handle responses and errors through the MCP protocol
@@ -69,9 +69,11 @@ import axios from "axios";
 import { x402Client, wrapAxiosWithPayment } from "@x402/axios";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { registerExactSvmScheme } from "@x402/svm/exact/client";
+import { registerExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { base58 } from "@scure/base";
+import algosdk from "algosdk";
 
 // Create x402 client with payment schemes
 const client = new x402Client();
@@ -84,25 +86,20 @@ registerExactEvmScheme(client, { signer: evmSigner });
 const svmSigner = await createKeyPairSignerFromBytes(base58.decode(SVM_PRIVATE_KEY));
 registerExactSvmScheme(client, { signer: svmSigner });
 
-// Optionally register AVM (Algorand) scheme
-if (AVM_PRIVATE_KEY) {
-  const { registerExactAvmScheme } = await import("@x402/avm/exact/client");
-  const algosdk = await import("algosdk");
-  const secretKey = Buffer.from(AVM_PRIVATE_KEY, "base64");
-  const address = algosdk.encodeAddress(secretKey.slice(32));
-  const avmSigner = {
-    address,
-    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return txns.map((txn, i) => {
-        if (indexesToSign && !indexesToSign.includes(i)) return null;
-        const decoded = algosdk.decodeUnsignedTransaction(txn);
-        const signed = algosdk.signTransaction(decoded, secretKey);
-        return signed.blob;
-      });
-    },
-  };
-  registerExactAvmScheme(client, { signer: avmSigner });
-}
+// Register AVM (Algorand) scheme
+const secretKey = Buffer.from(AVM_PRIVATE_KEY, "base64");
+const avmSigner = {
+  address: algosdk.encodeAddress(secretKey.slice(32)),
+  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+    return txns.map((txn, i) => {
+      if (indexesToSign && !indexesToSign.includes(i)) return null;
+      const decoded = algosdk.decodeUnsignedTransaction(txn);
+      const signed = algosdk.signTransaction(decoded, secretKey);
+      return signed.blob;
+    });
+  },
+};
+registerExactAvmScheme(client, { signer: avmSigner });
 
 // Create Axios instance with payment handling
 const api = wrapAxiosWithPayment(axios.create({ baseURL: RESOURCE_SERVER_URL }), client);

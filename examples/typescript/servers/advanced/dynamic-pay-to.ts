@@ -2,11 +2,13 @@ import { config } from "dotenv";
 import express from "express";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { ExactAvmScheme } from "@x402/avm/exact/server";
+import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 config();
 
 const evmAddress = process.env.EVM_ADDRESS as `0x${string}`;
-const avmAddress = process.env.AVM_ADDRESS;
+const avmAddress = process.env.AVM_ADDRESS as string;
 
 const addressLookup = {
   US: evmAddress,
@@ -18,7 +20,7 @@ const addressLookup = {
   FR: evmAddress,
 } as Record<string, `0x${string}`>;
 
-if (!evmAddress) {
+if (!evmAddress || !avmAddress) {
   console.error("Missing required environment variables");
   process.exit(1);
 }
@@ -29,6 +31,16 @@ if (!facilitatorUrl) {
   process.exit(1);
 }
 const facilitatorClient = new HTTPFacilitatorClient({ url: facilitatorUrl });
+
+const avmAddressLookup = {
+  US: avmAddress,
+  UK: avmAddress,
+  CA: avmAddress,
+  AU: avmAddress,
+  NZ: avmAddress,
+  IE: avmAddress,
+  FR: avmAddress,
+} as Record<string, string>;
 
 const accepts: {
   scheme: string;
@@ -46,26 +58,7 @@ const accepts: {
       return addressLookup[country as keyof typeof addressLookup];
     },
   },
-];
-
-const server = new x402ResourceServer(facilitatorClient).register("eip155:84532", new ExactEvmScheme());
-
-// Register AVM (Algorand) support if configured
-if (avmAddress) {
-  const { ExactAvmScheme } = await import("@x402/avm/exact/server");
-  const { ALGORAND_TESTNET_CAIP2 } = await import("@x402/avm");
-
-  const avmAddressLookup = {
-    US: avmAddress,
-    UK: avmAddress,
-    CA: avmAddress,
-    AU: avmAddress,
-    NZ: avmAddress,
-    IE: avmAddress,
-    FR: avmAddress,
-  } as Record<string, string>;
-
-  accepts.push({
+  {
     scheme: "exact",
     price: "$0.001",
     network: ALGORAND_TESTNET_CAIP2,
@@ -73,9 +66,12 @@ if (avmAddress) {
       const country = context.adapter.getQueryParam?.("country") ?? "US";
       return avmAddressLookup[country] || avmAddress;
     },
-  });
-  server.register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
-}
+  },
+];
+
+const server = new x402ResourceServer(facilitatorClient)
+  .register("eip155:84532", new ExactEvmScheme())
+  .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
 
 const app = express();
 

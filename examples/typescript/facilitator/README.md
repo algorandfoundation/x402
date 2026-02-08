@@ -22,7 +22,7 @@ and fill required environment variables:
 
 - `EVM_PRIVATE_KEY` - Ethereum private key
 - `SVM_PRIVATE_KEY` - Solana private key
-- `AVM_PRIVATE_KEY` - Base64-encoded 64-byte Algorand private key (optional)
+- `AVM_PRIVATE_KEY` - Base64-encoded 64-byte Algorand private key
 - `PORT` - Server port (optional, defaults to 4022)
 
 2. Install and build all packages from the typescript examples root:

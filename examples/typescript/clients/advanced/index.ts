@@ -24,6 +24,7 @@ const url = `${baseURL}${endpointPath}`;
  * To run this example, you need to set the following environment variables:
  * - EVM_PRIVATE_KEY: The private key of the EVM signer
  * - SVM_PRIVATE_KEY: The private key of the SVM signer
+ * - AVM_PRIVATE_KEY: The private key of the AVM signer (Base64-encoded 64-byte key)
  *
  * Usage:
  *   pnpm start builder-pattern
@@ -37,6 +38,11 @@ async function main(): Promise<void> {
 
   if (!evmPrivateKey) {
     console.error("❌ EVM_PRIVATE_KEY environment variable is required");
+    process.exit(1);
+  }
+
+  if (!avmPrivateKey) {
+    console.error("❌ AVM_PRIVATE_KEY environment variable is required");
     process.exit(1);
   }
 

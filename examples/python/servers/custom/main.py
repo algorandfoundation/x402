@@ -28,6 +28,8 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient
+from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
+from x402.mechanisms.avm.exact import ExactAvmServerScheme
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 from x402.schemas import Network, PaymentPayload, PaymentRequirements, ResourceConfig
 from x402.server import x402ResourceServer
@@ -37,11 +39,16 @@ load_dotenv()
 # Config
 EVM_ADDRESS = os.getenv("EVM_ADDRESS")
 AVM_ADDRESS = os.getenv("AVM_ADDRESS")
+AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2
 EVM_NETWORK: Network = "eip155:84532"  # Base Sepolia
 FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://x402.org/facilitator")
 
 if not EVM_ADDRESS:
     print("❌ EVM_ADDRESS environment variable is required")
+    sys.exit(1)
+
+if not AVM_ADDRESS:
+    print("❌ AVM_ADDRESS environment variable is required")
     sys.exit(1)
 
 if not FACILITATOR_URL:
@@ -50,7 +57,8 @@ if not FACILITATOR_URL:
 
 print("\n🔧 Custom x402 Server Implementation")
 print("This example demonstrates manual payment handling without middleware.\n")
-print(f"✅ Payment address: {EVM_ADDRESS}")
+print(f"✅ EVM Payment address: {EVM_ADDRESS}")
+print(f"✅ AVM Payment address: {AVM_ADDRESS}")
 print(f"✅ Facilitator: {FACILITATOR_URL}\n")
 
 
@@ -59,6 +67,9 @@ facilitator_client = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL
 resource_server = x402ResourceServer(facilitator_client).register(
     EVM_NETWORK,
     ExactEvmServerScheme(),
+).register(
+    AVM_NETWORK,
+    ExactAvmServerScheme(),
 )
 
 # Build route accepts configs
@@ -69,24 +80,13 @@ route_accepts: list[ResourceConfig] = [
         network=EVM_NETWORK,
         pay_to=EVM_ADDRESS,  # type: ignore
     ),
+    ResourceConfig(
+        scheme="exact",
+        price="$0.001",
+        network=AVM_NETWORK,
+        pay_to=AVM_ADDRESS,  # type: ignore
+    ),
 ]
-
-# Register AVM (Algorand) support if configured
-if AVM_ADDRESS:
-    from x402.mechanisms.avm.exact import ExactAvmServerScheme
-    from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
-
-    AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2
-    resource_server = resource_server.register(AVM_NETWORK, ExactAvmServerScheme())
-
-    route_accepts.append(
-        ResourceConfig(
-            scheme="exact",
-            price="$0.001",
-            network=AVM_NETWORK,
-            pay_to=AVM_ADDRESS,
-        ),
-    )
 
 
 # Route payment configuration

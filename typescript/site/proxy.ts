@@ -3,7 +3,6 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { ExactAvmScheme } from "@x402/avm/exact/server";
-import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 import { NextRequest, NextResponse } from "next/server";
 import { createPaywall } from "@x402/paywall";
 import { evmPaywall } from "@x402/paywall/evm";
@@ -17,7 +16,7 @@ const facilitatorUrl = process.env.FACILITATOR_URL as string;
 
 const EVM_NETWORK = "eip155:84532" as const; // Base Sepolia
 const SVM_NETWORK = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1" as const; // Solana Devnet
-const AVM_NETWORK = ALGORAND_TESTNET_CAIP2; // Algorand Testnet
+const AVM_NETWORK = "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=" as const; // Algorand Testnet
 
 // List of blocked countries and regions
 const BLOCKED_COUNTRIES = [
@@ -51,7 +50,6 @@ const paywall = createPaywall()
   })
   .build();
 
-// Build accepts and schemes arrays
 const accepts = [
   {
     payTo: evmPayeeAddress,
@@ -65,23 +63,19 @@ const accepts = [
     price: "$0.01",
     network: SVM_NETWORK,
   },
+  {
+    payTo: avmPayeeAddress,
+    scheme: "exact",
+    price: "$0.01",
+    network: AVM_NETWORK,
+  },
 ];
 
 const schemes = [
   { network: EVM_NETWORK, server: new ExactEvmScheme() },
   { network: SVM_NETWORK, server: new ExactSvmScheme() },
+  { network: AVM_NETWORK, server: new ExactAvmScheme() },
 ];
-
-// Optionally add AVM (Algorand) support if configured
-if (avmPayeeAddress) {
-  accepts.push({
-    payTo: avmPayeeAddress,
-    scheme: "exact",
-    price: "$0.01",
-    network: AVM_NETWORK,
-  });
-  schemes.push({ network: AVM_NETWORK, server: new ExactAvmScheme() });
-}
 
 const x402PaymentProxy = paymentProxyFromConfig(
   {

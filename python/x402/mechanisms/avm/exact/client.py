@@ -12,10 +12,10 @@ from typing import TYPE_CHECKING, Any
 try:
     from algosdk import encoding, transaction
     from algosdk.v2client import algod
-
-    ALGOSDK_AVAILABLE = True
-except ImportError:
-    ALGOSDK_AVAILABLE = False
+except ImportError as e:
+    raise ImportError(
+        "AVM mechanism requires py-algorand-sdk. Install with: pip install x402[avm]"
+    ) from e
 
 from ....schemas import PaymentRequirements
 from ..constants import NETWORK_CONFIGS, SCHEME_EXACT
@@ -25,14 +25,6 @@ from ..utils import normalize_network
 
 if TYPE_CHECKING:
     pass
-
-
-def _check_algosdk() -> None:
-    """Check that algosdk is available."""
-    if not ALGOSDK_AVAILABLE:
-        raise ImportError(
-            "AVM mechanism requires py-algorand-sdk. Install with: pip install x402[avm]"
-        )
 
 
 class ExactAvmScheme:
@@ -58,7 +50,6 @@ class ExactAvmScheme:
             signer: AVM signer for payment authorizations.
             algod_url: Optional custom Algod URL.
         """
-        _check_algosdk()
         self._signer = signer
         self._custom_algod_url = algod_url
         self._clients: dict[str, algod.AlgodClient] = {}

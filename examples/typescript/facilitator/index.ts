@@ -11,6 +11,9 @@ import { toFacilitatorEvmSigner } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { toFacilitatorSvmSigner } from "@x402/svm";
 import { registerExactSvmScheme } from "@x402/svm/exact/facilitator";
+import { ALGORAND_TESTNET_CAIP2, DEFAULT_ALGOD_TESTNET } from "@x402/avm";
+import { registerExactAvmScheme } from "@x402/avm/exact/facilitator";
+import algosdk from "algosdk";
 import dotenv from "dotenv";
 import express from "express";
 import { createWalletClient, http, publicActions } from "viem";
@@ -30,6 +33,11 @@ if (!process.env.EVM_PRIVATE_KEY) {
 
 if (!process.env.SVM_PRIVATE_KEY) {
   console.error("❌ SVM_PRIVATE_KEY environment variable is required");
+  process.exit(1);
+}
+
+if (!process.env.AVM_PRIVATE_KEY) {
+  console.error("❌ AVM_PRIVATE_KEY environment variable is required");
   process.exit(1);
 }
 
@@ -95,6 +103,49 @@ const evmSigner = toFacilitatorEvmSigner({
 // Facilitator can now handle all Solana networks with automatic RPC creation
 const svmSigner = toFacilitatorSvmSigner(svmAccount);
 
+// Initialize the AVM account from private key
+const avmSecretKey = Buffer.from(process.env.AVM_PRIVATE_KEY as string, "base64");
+if (avmSecretKey.length !== 64) {
+  throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)");
+}
+const avmAddress = algosdk.encodeAddress(avmSecretKey.slice(32));
+console.info(`AVM Facilitator account: ${avmAddress}`);
+
+const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
+
+const avmSigner = {
+  getAddresses: () => [avmAddress] as readonly string[],
+
+  signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
+    const decoded = algosdk.decodeUnsignedTransaction(txn);
+    const signed = algosdk.signTransaction(decoded, avmSecretKey);
+    return signed.blob;
+  },
+
+  getAlgodClient: (_network: string) => algodClient,
+
+  simulateTransactions: async (txns: Uint8Array[], _network: string) => {
+    const request = new algosdk.modelsv2.SimulateRequest({
+      txnGroups: [
+        new algosdk.modelsv2.SimulateRequestTransactionGroup({
+          txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
+        }),
+      ],
+      allowUnnamedResources: true,
+    });
+    return await algodClient.simulateTransactions(request).do();
+  },
+
+  sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
+    const response = await algodClient.sendRawTransaction(signedTxns).do();
+    return response.txid;
+  },
+
+  waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
+    return await algosdk.waitForConfirmation(algodClient, txId, waitRounds);
+  },
+};
+
 const facilitator = new x402Facilitator()
   .onBeforeVerify(async (context) => {
     console.log("Before verify", context);
@@ -125,60 +176,10 @@ registerExactSvmScheme(facilitator, {
   signer: svmSigner,
   networks: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", // Devnet
 });
-
-// Register AVM (Algorand) support if configured
-if (process.env.AVM_PRIVATE_KEY) {
-  const { ALGORAND_TESTNET_CAIP2, DEFAULT_ALGOD_TESTNET } = await import("@x402/avm");
-  const { registerExactAvmScheme } = await import("@x402/avm/exact/facilitator");
-  const algosdk = await import("algosdk");
-
-  const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY as string, "base64");
-  if (secretKey.length !== 64) {
-    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
-  }
-  const address = algosdk.encodeAddress(secretKey.slice(32));
-  console.info(`AVM Facilitator account: ${address}`);
-
-  const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
-
-  const avmSigner = {
-    getAddresses: () => [address] as readonly string[],
-
-    signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, secretKey);
-      return signed.blob;
-    },
-
-    getAlgodClient: (_network: string) => algodClient,
-
-    simulateTransactions: async (txns: Uint8Array[], _network: string) => {
-      const request = new algosdk.modelsv2.SimulateRequest({
-        txnGroups: [
-          new algosdk.modelsv2.SimulateRequestTransactionGroup({
-            txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
-          }),
-        ],
-        allowUnnamedResources: true,
-      });
-      return await algodClient.simulateTransactions(request).do();
-    },
-
-    sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
-      const response = await algodClient.sendRawTransaction(signedTxns).do();
-      return response.txid;
-    },
-
-    waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
-      return await algosdk.waitForConfirmation(algodClient, txId, waitRounds);
-    },
-  };
-
-  registerExactAvmScheme(facilitator, {
-    signer: avmSigner,
-    networks: ALGORAND_TESTNET_CAIP2, // Algorand Testnet
-  });
-}
+registerExactAvmScheme(facilitator, {
+  signer: avmSigner,
+  networks: ALGORAND_TESTNET_CAIP2, // Algorand Testnet
+});
 
 // Initialize Express app
 const app = express();

@@ -2,7 +2,7 @@
  * MCP Server with x402 Payment Integration
  *
  * This example demonstrates how to create an MCP server that can make
- * paid API requests using the x402 protocol with both EVM and SVM support.
+ * paid API requests using the x402 protocol with EVM, SVM, and AVM support.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -12,9 +12,11 @@ import { config } from "dotenv";
 import { x402Client, wrapAxiosWithPayment } from "@x402/axios";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { registerExactSvmScheme } from "@x402/svm/exact/client";
+import { registerExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { base58 } from "@scure/base";
+import algosdk from "algosdk";
 
 config();
 
@@ -24,53 +26,41 @@ const avmPrivateKey = process.env.AVM_PRIVATE_KEY as string;
 const baseURL = process.env.RESOURCE_SERVER_URL || "http://localhost:4021";
 const endpointPath = process.env.ENDPOINT_PATH || "/weather";
 
-if (!evmPrivateKey && !svmPrivateKey) {
-  throw new Error("At least one of EVM_PRIVATE_KEY or SVM_PRIVATE_KEY must be provided");
+if (!evmPrivateKey || !svmPrivateKey || !avmPrivateKey) {
+  throw new Error("EVM_PRIVATE_KEY, SVM_PRIVATE_KEY, and AVM_PRIVATE_KEY must all be provided");
 }
 
 /**
- * Creates an axios client configured with x402 payment support for EVM and/or SVM.
+ * Creates an axios client configured with x402 payment support for EVM, SVM, and AVM.
  *
  * @returns A wrapped axios instance that handles 402 payment flows automatically.
  */
 async function createClient() {
   const client = new x402Client();
 
-  if (evmPrivateKey) {
-    const evmSigner = privateKeyToAccount(evmPrivateKey);
-    registerExactEvmScheme(client, { signer: evmSigner });
+  const evmSigner = privateKeyToAccount(evmPrivateKey);
+  registerExactEvmScheme(client, { signer: evmSigner });
+
+  const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
+  registerExactSvmScheme(client, { signer: svmSigner });
+
+  const secretKey = Buffer.from(avmPrivateKey, "base64");
+  if (secretKey.length !== 64) {
+    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
   }
-
-  if (svmPrivateKey) {
-    const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
-    registerExactSvmScheme(client, { signer: svmSigner });
-  }
-
-  // Register AVM (Algorand) support if configured
-  if (avmPrivateKey) {
-    const { registerExactAvmScheme } = await import("@x402/avm/exact/client");
-    const algosdk = await import("algosdk");
-
-    const secretKey = Buffer.from(avmPrivateKey, "base64");
-    if (secretKey.length !== 64) {
-      throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
-    }
-    const address = algosdk.encodeAddress(secretKey.slice(32));
-
-    const avmSigner = {
-      address,
-      signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-        return txns.map((txn, i) => {
-          if (indexesToSign && !indexesToSign.includes(i)) return null;
-          const decoded = algosdk.decodeUnsignedTransaction(txn);
-          const signed = algosdk.signTransaction(decoded, secretKey);
-          return signed.blob;
-        });
-      },
-    };
-
-    registerExactAvmScheme(client, { signer: avmSigner });
-  }
+  const address = algosdk.encodeAddress(secretKey.slice(32));
+  const avmSigner = {
+    address,
+    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+      return txns.map((txn, i) => {
+        if (indexesToSign && !indexesToSign.includes(i)) return null;
+        const decoded = algosdk.decodeUnsignedTransaction(txn);
+        const signed = algosdk.signTransaction(decoded, secretKey);
+        return signed.blob;
+      });
+    },
+  };
+  registerExactAvmScheme(client, { signer: avmSigner });
 
   return wrapAxiosWithPayment(axios.create({ baseURL }), client);
 }

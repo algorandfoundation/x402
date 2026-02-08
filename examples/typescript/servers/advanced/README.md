@@ -350,7 +350,7 @@ This section describes how to add Algorand network support alongside EVM.
 
 Add to your `.env`:
 
-- `AVM_ADDRESS` - Algorand address to receive payments (optional)
+- `AVM_ADDRESS` - Algorand address to receive payments
 
 ### Registering the AVM Scheme
 
@@ -384,26 +384,23 @@ app.use(
 );
 ```
 
-### Conditional Network Registration
+### Multi-Network Registration
 
-Register networks only when addresses are configured:
+Register all supported networks with their schemes and payment configurations:
 
 ```typescript
-const accepts: AcceptConfig[] = [];
-const server = new x402ResourceServer(facilitatorClient);
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { ExactAvmScheme } from "@x402/avm/exact/server";
+import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 
-if (evmAddress) {
-  const { ExactEvmScheme } = await import("@x402/evm/exact/server");
-  accepts.push({ scheme: "exact", price: "$0.001", network: "eip155:84532", payTo: evmAddress });
-  server.register("eip155:84532", new ExactEvmScheme());
-}
+const server = new x402ResourceServer(facilitatorClient)
+  .register("eip155:84532", new ExactEvmScheme())
+  .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
 
-if (avmAddress) {
-  const { ExactAvmScheme } = await import("@x402/avm/exact/server");
-  const { ALGORAND_TESTNET_CAIP2 } = await import("@x402/avm");
-  accepts.push({ scheme: "exact", price: "$0.001", network: ALGORAND_TESTNET_CAIP2, payTo: avmAddress });
-  server.register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
-}
+const accepts: AcceptConfig[] = [
+  { scheme: "exact", price: "$0.001", network: "eip155:84532", payTo: evmAddress },
+  { scheme: "exact", price: "$0.001", network: ALGORAND_TESTNET_CAIP2, payTo: avmAddress },
+];
 ```
 
 ### AVM Dynamic Pricing Example

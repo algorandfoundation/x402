@@ -8,8 +8,10 @@ from pydantic import BaseModel
 
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
-from x402.http.paywall import create_paywall, evm_paywall, svm_paywall
+from x402.http.paywall import avm_paywall, create_paywall, evm_paywall, svm_paywall
 from x402.http.types import RouteConfig
+from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2, USDC_TESTNET_ASA_ID
+from x402.mechanisms.avm.exact import ExactAvmServerScheme
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 from x402.mechanisms.svm.exact import ExactSvmServerScheme
 from x402.schemas import AssetAmount, Network
@@ -21,12 +23,13 @@ load_dotenv()
 EVM_ADDRESS = os.getenv("EVM_ADDRESS")
 SVM_ADDRESS = os.getenv("SVM_ADDRESS")
 AVM_ADDRESS = os.getenv("AVM_ADDRESS")
+AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2
 EVM_NETWORK: Network = "eip155:84532"  # Base Sepolia
 SVM_NETWORK: Network = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"  # Solana Devnet
 FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://x402.org/facilitator")
 
-if not EVM_ADDRESS or not SVM_ADDRESS:
-    raise ValueError("Missing required environment variables (EVM_ADDRESS, SVM_ADDRESS)")
+if not EVM_ADDRESS or not SVM_ADDRESS or not AVM_ADDRESS:
+    raise ValueError("Missing required environment variables (EVM_ADDRESS, SVM_ADDRESS, AVM_ADDRESS)")
 
 
 class WeatherReport(BaseModel):
@@ -46,10 +49,17 @@ app = FastAPI()
 
 facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
 server = x402ResourceServer(facilitator)
+server.register(AVM_NETWORK, ExactAvmServerScheme())
 server.register(EVM_NETWORK, ExactEvmServerScheme())
 server.register(SVM_NETWORK, ExactSvmServerScheme())
 
 weather_accepts = [
+    PaymentOption(
+        scheme="exact",
+        pay_to=AVM_ADDRESS,
+        price="$0.01",
+        network=AVM_NETWORK,
+    ),
     PaymentOption(
         scheme="exact",
         pay_to=EVM_ADDRESS,
@@ -65,6 +75,16 @@ weather_accepts = [
 ]
 
 premium_accepts = [
+    PaymentOption(
+        scheme="exact",
+        pay_to=AVM_ADDRESS,
+        price=AssetAmount(
+            amount="10000",  # $0.01 USDC (6 decimals)
+            asset=str(USDC_TESTNET_ASA_ID),
+            extra={"name": "USDC", "decimals": 6},
+        ),
+        network=AVM_NETWORK,
+    ),
     PaymentOption(
         scheme="exact",
         pay_to=EVM_ADDRESS,
@@ -83,35 +103,6 @@ premium_accepts = [
     ),
 ]
 
-# Register AVM (Algorand) support if configured
-if AVM_ADDRESS:
-    from x402.mechanisms.avm.exact import ExactAvmServerScheme
-    from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2, USDC_TESTNET_ASA_ID
-
-    AVM_NETWORK: Network = ALGORAND_TESTNET_CAIP2
-    server.register(AVM_NETWORK, ExactAvmServerScheme())
-
-    weather_accepts.append(
-        PaymentOption(
-            scheme="exact",
-            pay_to=AVM_ADDRESS,
-            price="$0.01",
-            network=AVM_NETWORK,
-        )
-    )
-    premium_accepts.append(
-        PaymentOption(
-            scheme="exact",
-            pay_to=AVM_ADDRESS,
-            price=AssetAmount(
-                amount="10000",  # $0.01 USDC (6 decimals)
-                asset=str(USDC_TESTNET_ASA_ID),
-                extra={"name": "USDC", "decimals": 6},
-            ),
-            network=AVM_NETWORK,
-        )
-    )
-
 routes = {
     "GET /weather": RouteConfig(
         accepts=weather_accepts,
@@ -126,18 +117,14 @@ routes = {
 }
 
 # Paywall provider for browser-based payment UI
-paywall_builder = (
+paywall = (
     create_paywall()
+    .with_network(avm_paywall)
     .with_network(evm_paywall)
     .with_network(svm_paywall)
+    .with_config(app_name="x402 Paywall Demo", testnet=True)
+    .build()
 )
-
-if AVM_ADDRESS:
-    from x402.http.paywall import avm_paywall
-
-    paywall_builder = paywall_builder.with_network(avm_paywall)
-
-paywall = paywall_builder.with_config(app_name="x402 Paywall Demo", testnet=True).build()
 
 app.add_middleware(
     PaymentMiddlewareASGI,

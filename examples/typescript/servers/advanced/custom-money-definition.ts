@@ -2,13 +2,15 @@ import { config } from "dotenv";
 import express from "express";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { ExactAvmScheme } from "@x402/avm/exact/server";
+import { ALGORAND_TESTNET_CAIP2 } from "@x402/avm";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 config();
 
 const evmAddress = process.env.EVM_ADDRESS as `0x${string}`;
 const svmAddress = process.env.SVM_ADDRESS;
-const avmAddress = process.env.AVM_ADDRESS;
-if (!evmAddress || !svmAddress) {
+const avmAddress = process.env.AVM_ADDRESS as string;
+if (!evmAddress || !svmAddress || !avmAddress) {
   console.error("Missing required environment variables");
   process.exit(1);
 }
@@ -26,6 +28,12 @@ const accepts: { scheme: string; price: string; network: `${string}:${string}`; 
     price: "$0.001",
     network: "eip155:84532",
     payTo: evmAddress,
+  },
+  {
+    scheme: "exact",
+    price: "$0.001",
+    network: ALGORAND_TESTNET_CAIP2,
+    payTo: avmAddress,
   },
 ];
 
@@ -45,19 +53,7 @@ const server = new x402ResourceServer(facilitatorClient).register(
   }),
 );
 
-// Register AVM (Algorand) support if configured
-if (avmAddress) {
-  const { ExactAvmScheme } = await import("@x402/avm/exact/server");
-  const { ALGORAND_TESTNET_CAIP2 } = await import("@x402/avm");
-
-  accepts.push({
-    scheme: "exact",
-    price: "$0.001",
-    network: ALGORAND_TESTNET_CAIP2,
-    payTo: avmAddress,
-  });
-  server.register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
-}
+server.register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme());
 
 const app = express();
 

@@ -57,7 +57,7 @@ Use this approach when you need:
 2. Edit `.env` with your configuration:
    - `EVM_PRIVATE_KEY`: Your EVM wallet private key (0x prefixed)
    - `SVM_PRIVATE_KEY`: Your Solana wallet private key (base58)
-   - `AVM_PRIVATE_KEY`: *(Optional)* Base64-encoded 64-byte Algorand private key
+   - `AVM_PRIVATE_KEY`: Base64-encoded 64-byte Algorand private key
    - `RESOURCE_SERVER_URL`: The x402-enabled server URL
    - `ENDPOINT_PATH`: The protected endpoint path
 
@@ -83,7 +83,7 @@ from x402.mechanisms.avm.exact.register import register_exact_avm_client
 
 client = x402Client()
 register_exact_evm_client(client, EthAccountSigner(account))
-register_exact_avm_client(client, avm_signer)  # Optional: See main.py for signer setup
+register_exact_avm_client(client, avm_signer)  # See main.py for signer setup
 ```
 
 ### 2. Detecting Payment Required

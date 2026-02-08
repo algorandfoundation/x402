@@ -27,21 +27,12 @@ from .constants import (
 )
 from .types import DecodedTransactionInfo, TransactionGroupInfo
 
-# Check for algosdk availability
 try:
     from algosdk import encoding, transaction
-
-    ALGOSDK_AVAILABLE = True
-except ImportError:
-    ALGOSDK_AVAILABLE = False
-
-
-def _check_algosdk() -> None:
-    """Check that algosdk is available."""
-    if not ALGOSDK_AVAILABLE:
-        raise ImportError(
-            "AVM mechanism requires py-algorand-sdk. Install with: pip install x402[avm]"
-        )
+except ImportError as e:
+    raise ImportError(
+        "AVM mechanism requires py-algorand-sdk. Install with: pip install x402[avm]"
+    ) from e
 
 
 def is_valid_address(address: str) -> bool:
@@ -59,15 +50,11 @@ def is_valid_address(address: str) -> bool:
     if not re.match(AVM_ADDRESS_REGEX, address):
         return False
 
-    # Additional checksum validation using algosdk if available
-    if ALGOSDK_AVAILABLE:
-        try:
-            encoding.decode_address(address)
-            return True
-        except Exception:
-            return False
-
-    return True
+    try:
+        encoding.decode_address(address)
+        return True
+    except Exception:
+        return False
 
 
 def normalize_network(network: str) -> str:
@@ -233,8 +220,6 @@ def decode_transaction_bytes(txn_bytes: bytes) -> DecodedTransactionInfo:
     Raises:
         ValueError: If decoding fails.
     """
-    _check_algosdk()
-
     try:
         # Note: msgpack_decode expects a base64 string, so encode the raw bytes
         b64_encoded = base64.b64encode(txn_bytes).decode("utf-8")

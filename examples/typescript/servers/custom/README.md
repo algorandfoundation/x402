@@ -1,6 +1,6 @@
 # @x402/core Custom Server
 
-Demonstrates how to implement x402 payment handling manually without using pre-built middleware packages like `@x402/express` or `@x402/hono`. Supports EVM (Ethereum) and optionally AVM (Algorand) networks.
+Demonstrates how to implement x402 payment handling manually without using pre-built middleware packages like `@x402/express` or `@x402/hono`. Supports EVM (Ethereum) and AVM (Algorand) networks.
 
 ```typescript
 import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
@@ -49,7 +49,7 @@ and fill required environment variables:
 
 - `FACILITATOR_URL` - Facilitator endpoint URL
 - `EVM_ADDRESS` - Ethereum address to receive payments
-- `AVM_ADDRESS` - Algorand address to receive payments (optional)
+- `AVM_ADDRESS` - Algorand address to receive payments
 
 2. Install and build all packages from the typescript examples root:
 
@@ -93,7 +93,7 @@ These clients will demonstrate how to:
 
 ## Example Endpoint
 
-The server includes a single example endpoint at `/weather` that requires a payment of 0.001 USDC on Base Sepolia to access. The endpoint returns weather data for a given city. If an Algorand address is configured, the server also accepts payment on Algorand Testnet.
+The server includes a single example endpoint at `/weather` that requires a payment of 0.001 USDC on Base Sepolia or Algorand Testnet to access. The endpoint returns weather data for a given city.
 
 ## HTTP Headers
 

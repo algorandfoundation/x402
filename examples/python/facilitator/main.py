@@ -6,19 +6,28 @@ on-chain for the x402 protocol.
 Supports:
 - EVM networks (Base Sepolia) via web3.py
 - SVM networks (Solana Devnet) via solders
+- AVM networks (Algorand Testnet) via algosdk
 
 Run with: uvicorn main:app --port 4022
 """
 
+import base64
 import os
 import sys
 
+import algosdk
+import algosdk.encoding
+import algosdk.transaction
+import algosdk.v2client.algod
+from algosdk.v2client.models import SimulateRequest, SimulateRequestTransactionGroup
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from solders.keypair import Keypair
 
 from x402 import x402Facilitator
+from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
+from x402.mechanisms.avm.exact import register_exact_avm_facilitator
 from x402.mechanisms.evm import FacilitatorWeb3Signer
 from x402.mechanisms.evm.exact import register_exact_evm_facilitator
 from x402.mechanisms.svm import FacilitatorKeypairSigner
@@ -39,6 +48,10 @@ if not os.environ.get("SVM_PRIVATE_KEY"):
     print("❌ SVM_PRIVATE_KEY environment variable is required")
     sys.exit(1)
 
+if not os.environ.get("AVM_PRIVATE_KEY"):
+    print("❌ AVM_PRIVATE_KEY environment variable is required")
+    sys.exit(1)
+
 # Initialize the EVM signer from private key
 evm_signer = FacilitatorWeb3Signer(
     private_key=os.environ["EVM_PRIVATE_KEY"],
@@ -50,6 +63,99 @@ print(f"EVM Facilitator account: {evm_signer.get_addresses()[0]}")
 svm_keypair = Keypair.from_base58_string(os.environ["SVM_PRIVATE_KEY"])
 svm_signer = FacilitatorKeypairSigner(svm_keypair)
 print(f"SVM Facilitator account: {svm_signer.get_addresses()[0]}")
+
+# Initialize the AVM signer from private key
+
+
+class AlgorandFacilitatorSigner:
+    """Implements the FacilitatorAvmSigner interface for Algorand."""
+
+    def __init__(self, sk: bytes, addr: str, client):
+        self._secret_key = sk
+        self._address = addr
+        self._algod = client
+
+    def get_addresses(self) -> list[str]:
+        return [self._address]
+
+    def sign_transaction(self, txn_bytes: bytes, fee_payer: str, network: str) -> bytes:
+        if fee_payer != self._address:
+            raise ValueError(f"Unknown fee payer: {fee_payer}")
+        # algosdk Python API uses base64 strings; SDK protocol uses raw bytes
+        sk_b64 = base64.b64encode(self._secret_key).decode()
+        txn = algosdk.encoding.msgpack_decode(base64.b64encode(txn_bytes).decode())
+        signed = txn.sign(sk_b64)
+        return base64.b64decode(algosdk.encoding.msgpack_encode(signed))
+
+    def sign_group(
+        self,
+        group_bytes: list[bytes],
+        fee_payer: str,
+        indexes_to_sign: list[int],
+        network: str,
+    ) -> list[bytes]:
+        if fee_payer != self._address:
+            raise ValueError(f"Unknown fee payer: {fee_payer}")
+        sk_b64 = base64.b64encode(self._secret_key).decode()
+        result = list(group_bytes)
+        for i in indexes_to_sign:
+            txn = algosdk.encoding.msgpack_decode(
+                base64.b64encode(group_bytes[i]).decode()
+            )
+            signed = txn.sign(sk_b64)
+            result[i] = base64.b64decode(algosdk.encoding.msgpack_encode(signed))
+        return result
+
+    def simulate_group(self, group_bytes: list[bytes], network: str) -> None:
+        decoded_txns = []
+        for txn_bytes in group_bytes:
+            b64 = base64.b64encode(txn_bytes).decode()
+            obj = algosdk.encoding.msgpack_decode(b64)
+            if isinstance(obj, algosdk.transaction.SignedTransaction):
+                decoded_txns.append(obj)
+            else:
+                # Wrap unsigned transaction for simulation
+                decoded_txns.append(
+                    algosdk.transaction.SignedTransaction(obj, None)
+                )
+        request = SimulateRequest(
+            txn_groups=[
+                SimulateRequestTransactionGroup(txns=decoded_txns)
+            ],
+            allow_unnamed_resources=True,
+            allow_empty_signatures=True,
+        )
+        result = self._algod.simulate_transactions(request)
+        if result.get("txn-groups") and result["txn-groups"][0].get("failure-message"):
+            raise Exception(f"Simulation failed: {result['txn-groups'][0]['failure-message']}")
+
+    def send_group(self, group_bytes: list[bytes], network: str) -> str:
+        # Send raw bytes directly (like TS sendRawTransaction) to
+        # avoid the decode/re-encode round-trip in send_transactions
+        raw_group = b"".join(group_bytes)
+        txid = self._algod.send_raw_transaction(
+            base64.b64encode(raw_group)
+        )
+        return txid
+
+    def confirm_transaction(self, txid: str, network: str, rounds: int = 4) -> None:
+        algosdk.transaction.wait_for_confirmation(self._algod, txid, rounds)
+
+
+# Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
+avm_secret_key = base64.b64decode(os.environ["AVM_PRIVATE_KEY"])
+if len(avm_secret_key) != 64:
+    print("Error: AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key")
+    sys.exit(1)
+avm_address = algosdk.encoding.encode_address(avm_secret_key[32:])
+
+# Create Algod client for testnet
+algod_url = os.environ.get("ALGOD_SERVER", "https://testnet-api.algonode.cloud")
+algod_token = os.environ.get("ALGOD_TOKEN", "")
+algod_client = algosdk.v2client.algod.AlgodClient(algod_token, algod_url)
+
+avm_signer = AlgorandFacilitatorSigner(avm_secret_key, avm_address, algod_client)
+print(f"AVM Facilitator account: {avm_signer.get_addresses()[0]}")
 
 
 # Async hook functions for the facilitator
@@ -77,7 +183,7 @@ async def settle_failure_hook(ctx):
     print(f"Settle failure: {ctx.error}")
 
 
-# Initialize the x402 Facilitator with EVM and SVM support
+# Initialize the x402 Facilitator with EVM, SVM, and AVM support
 facilitator = (
     x402Facilitator()
     .on_before_verify(before_verify_hook)
@@ -88,7 +194,7 @@ facilitator = (
     .on_settle_failure(settle_failure_hook)
 )
 
-# Register EVM and SVM schemes
+# Register EVM, SVM, and AVM schemes
 register_exact_evm_facilitator(
     facilitator,
     evm_signer,
@@ -100,108 +206,11 @@ register_exact_svm_facilitator(
     svm_signer,
     networks="solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",  # Devnet
 )
-
-# Register AVM (Algorand) scheme if private key provided
-avm_private_key = os.environ.get("AVM_PRIVATE_KEY")
-if avm_private_key:
-    import base64
-    import algosdk
-    from x402.mechanisms.avm import ALGORAND_TESTNET_CAIP2
-    from x402.mechanisms.avm.exact import register_exact_avm_facilitator
-
-    # Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
-    secret_key = base64.b64decode(avm_private_key)
-    if len(secret_key) != 64:
-        print("Error: AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key")
-        sys.exit(1)
-    avm_address = algosdk.encoding.encode_address(secret_key[32:])
-
-    # Create Algod client for testnet
-    algod_url = os.environ.get("ALGOD_SERVER", "https://testnet-api.algonode.cloud")
-    algod_token = os.environ.get("ALGOD_TOKEN", "")
-    algod_client = algosdk.v2client.algod.AlgodClient(algod_token, algod_url)
-
-    # Implement FacilitatorAvmSigner interface directly
-    class AlgorandFacilitatorSigner:
-        def __init__(self, sk: bytes, addr: str, client):
-            self._secret_key = sk
-            self._address = addr
-            self._algod = client
-
-        def get_addresses(self) -> list[str]:
-            return [self._address]
-
-        def sign_transaction(self, txn_bytes: bytes, fee_payer: str, network: str) -> bytes:
-            if fee_payer != self._address:
-                raise ValueError(f"Unknown fee payer: {fee_payer}")
-            # algosdk Python API uses base64 strings; SDK protocol uses raw bytes
-            sk_b64 = base64.b64encode(self._secret_key).decode()
-            txn = algosdk.encoding.msgpack_decode(base64.b64encode(txn_bytes).decode())
-            signed = txn.sign(sk_b64)
-            return base64.b64decode(algosdk.encoding.msgpack_encode(signed))
-
-        def sign_group(
-            self,
-            group_bytes: list[bytes],
-            fee_payer: str,
-            indexes_to_sign: list[int],
-            network: str,
-        ) -> list[bytes]:
-            if fee_payer != self._address:
-                raise ValueError(f"Unknown fee payer: {fee_payer}")
-            sk_b64 = base64.b64encode(self._secret_key).decode()
-            result = list(group_bytes)
-            for i in indexes_to_sign:
-                txn = algosdk.encoding.msgpack_decode(
-                    base64.b64encode(group_bytes[i]).decode()
-                )
-                signed = txn.sign(sk_b64)
-                result[i] = base64.b64decode(algosdk.encoding.msgpack_encode(signed))
-            return result
-
-        def simulate_group(self, group_bytes: list[bytes], network: str) -> None:
-            from algosdk.v2client.models import SimulateRequest, SimulateRequestTransactionGroup
-            decoded_txns = []
-            for txn_bytes in group_bytes:
-                b64 = base64.b64encode(txn_bytes).decode()
-                obj = algosdk.encoding.msgpack_decode(b64)
-                if isinstance(obj, algosdk.transaction.SignedTransaction):
-                    decoded_txns.append(obj)
-                else:
-                    # Wrap unsigned transaction for simulation
-                    decoded_txns.append(
-                        algosdk.transaction.SignedTransaction(obj, None)
-                    )
-            request = SimulateRequest(
-                txn_groups=[
-                    SimulateRequestTransactionGroup(txns=decoded_txns)
-                ],
-                allow_unnamed_resources=True,
-                allow_empty_signatures=True,
-            )
-            result = self._algod.simulate_transactions(request)
-            if result.get("txn-groups") and result["txn-groups"][0].get("failure-message"):
-                raise Exception(f"Simulation failed: {result['txn-groups'][0]['failure-message']}")
-
-        def send_group(self, group_bytes: list[bytes], network: str) -> str:
-            # Send raw bytes directly (like TS sendRawTransaction) to
-            # avoid the decode/re-encode round-trip in send_transactions
-            raw_group = b"".join(group_bytes)
-            txid = self._algod.send_raw_transaction(
-                base64.b64encode(raw_group)
-            )
-            return txid
-
-        def confirm_transaction(self, txid: str, network: str, rounds: int = 4) -> None:
-            algosdk.transaction.wait_for_confirmation(self._algod, txid, rounds)
-
-    avm_signer = AlgorandFacilitatorSigner(secret_key, avm_address, algod_client)
-    print(f"AVM Facilitator account: {avm_signer.get_addresses()[0]}")
-    register_exact_avm_facilitator(
-        facilitator,
-        avm_signer,
-        networks=ALGORAND_TESTNET_CAIP2,  # Algorand Testnet
-    )
+register_exact_avm_facilitator(
+    facilitator,
+    avm_signer,
+    networks=ALGORAND_TESTNET_CAIP2,  # Algorand Testnet
+)
 
 
 # Pydantic models for request/response

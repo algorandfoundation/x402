@@ -8,6 +8,7 @@ FastAPI-based facilitator service that verifies and settles payments on-chain fo
 - uv package manager (install via [uv installation](https://docs.astral.sh/uv/getting-started/installation/))
 - EVM private key with Base Sepolia ETH for transaction fees
 - SVM private key with Solana Devnet SOL for transaction fees
+- AVM private key (Base64-encoded 64-byte key) with Algorand Testnet ALGO for transaction fees
 
 ## Setup
 
@@ -21,6 +22,7 @@ and fill required environment variables:
 
 - `EVM_PRIVATE_KEY` - Ethereum private key (hex with 0x prefix)
 - `SVM_PRIVATE_KEY` - Solana private key (base58 encoded)
+- `AVM_PRIVATE_KEY` - Base64-encoded 64-byte Algorand private key
 - `PORT` - Server port (optional, defaults to 4022)
 - `EVM_RPC_URL` - Custom EVM RPC URL (optional, defaults to Base Sepolia)
 
@@ -63,12 +65,21 @@ Returns payment schemes and networks this facilitator supports.
       "extra": {
         "feePayer": "..."
       }
+    },
+    {
+      "x402Version": 2,
+      "scheme": "exact",
+      "network": "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
+      "extra": {
+        "feePayer": "..."
+      }
     }
   ],
   "extensions": [],
   "signers": {
     "eip155": ["0x..."],
-    "solana": ["..."]
+    "solana": ["..."],
+    "algorand": ["..."]
   }
 }
 ```
@@ -176,6 +187,7 @@ Register additional schemes for other networks:
 from x402 import x402Facilitator
 from x402.mechanisms.evm.exact import register_exact_evm_facilitator
 from x402.mechanisms.svm.exact import register_exact_svm_facilitator
+from x402.mechanisms.avm.exact import register_exact_avm_facilitator
 
 facilitator = x402Facilitator()
 
@@ -189,6 +201,12 @@ register_exact_svm_facilitator(
     facilitator,
     svm_signer,
     networks="solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+)
+
+register_exact_avm_facilitator(
+    facilitator,
+    avm_signer,
+    networks="algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
 )
 ```
 
@@ -269,4 +287,6 @@ Networks use [CAIP-2](https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/cai
 - `eip155:8453` — Base Mainnet
 - `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` — Solana Devnet
 - `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` — Solana Mainnet
+- `algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=` — Algorand Testnet
+- `algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=` — Algorand Mainnet
 
