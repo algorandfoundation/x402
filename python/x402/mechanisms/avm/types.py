@@ -81,6 +81,9 @@ class DecodedTransactionInfo:
         asset_amount: Asset amount or None.
         asset_close_to: Asset close-to address or None.
 
+        # Lease
+        lease: Lease bytes or None.
+
         # Security fields
         rekey_to: Rekey-to address or None (SECURITY: should be None).
     """
@@ -95,6 +98,7 @@ class DecodedTransactionInfo:
     group: str | None = None
     is_signed: bool = False
     note: bytes | None = None
+    lease: bytes | None = None
 
     # Payment-specific (type == "pay")
     receiver: str | None = None

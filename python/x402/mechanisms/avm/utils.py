@@ -268,6 +268,9 @@ def decode_transaction_bytes(txn_bytes: bytes) -> DecodedTransactionInfo:
     # Note
     note = txn_dict.get("note")
 
+    # Lease
+    lease = txn_dict.get("lx")
+
     # Rekey-to (SECURITY: should be None)
     rekey_bytes = txn_dict.get("rekey")
     rekey_to = encoding.encode_address(rekey_bytes) if rekey_bytes else None
@@ -284,6 +287,7 @@ def decode_transaction_bytes(txn_bytes: bytes) -> DecodedTransactionInfo:
         group=group,
         is_signed=is_signed,
         note=note,
+        lease=lease,
         rekey_to=rekey_to,
     )
 
