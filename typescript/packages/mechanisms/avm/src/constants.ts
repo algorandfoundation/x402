@@ -191,10 +191,12 @@ export const MAX_ATOMIC_GROUP_SIZE = 16;
 export const MIN_TXN_FEE = 1000;
 
 /**
- * Maximum reasonable fee for fee payer transactions (10 Algo = 10,000,000 microAlgos)
- * Used as a sanity check during verification
+ * Maximum reasonable fee for fee payer transactions (16000 microAlgos)
+ * Used as a sanity check during verification to prevent fee extraction attacks.
+ * Algorand fees are flat (min 1000 microAlgos per txn), so the fee payer's
+ * per-transaction fee should never exceed a small multiple of the minimum.
  */
-export const MAX_REASONABLE_FEE = 10_000_000;
+export const MAX_REASONABLE_FEE = 16000;
 
 // ============================================================================
 // Address Validation

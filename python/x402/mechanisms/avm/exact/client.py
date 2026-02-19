@@ -7,6 +7,7 @@ fee abstraction (gasless transactions).
 from __future__ import annotations
 
 import base64
+import time
 from typing import TYPE_CHECKING, Any
 
 try:
@@ -134,7 +135,7 @@ class ExactAvmScheme:
                 sp=fee_payer_sp,
                 receiver=fee_payer,  # Self-payment
                 amt=0,
-                note=b"x402-fee-payer",
+                note=f"x402-fee-payer-{time.time_ns()}".encode(),
             )
             transactions.append(fee_payer_txn)
 
@@ -164,7 +165,7 @@ class ExactAvmScheme:
             receiver=requirements.pay_to,
             amt=int(requirements.amount),
             index=int(requirements.asset),
-            note=b"x402-payment",
+            note=f"x402-payment-{time.time_ns()}".encode(),
         )
         transactions.append(asa_transfer)
 

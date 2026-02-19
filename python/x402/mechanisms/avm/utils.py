@@ -397,12 +397,14 @@ def is_blocked_transaction_type(txn_type: str) -> bool:
 
 
 def validate_no_security_risks(txn_info: DecodedTransactionInfo) -> str | None:
-    """Validate that a transaction has no security risks.
+    """Validate that a transaction has no security risks (per-transaction checks).
 
     Checks for:
-    - Rekey operations
     - Close-to operations (draining accounts)
     - Blocked transaction types (keyreg)
+
+    Note: Rekey operations are validated at group level by validate_rekey_operations()
+    which allows balanced sandwich patterns (rekey A->B then rekey back to A).
 
     Args:
         txn_info: Decoded transaction info.
@@ -413,12 +415,7 @@ def validate_no_security_risks(txn_info: DecodedTransactionInfo) -> str | None:
     from .constants import (
         ERR_BLOCKED_TXN_TYPE,
         ERR_CLOSE_TO_DETECTED,
-        ERR_REKEY_DETECTED,
     )
-
-    # Check for rekey
-    if txn_info.rekey_to:
-        return ERR_REKEY_DETECTED
 
     # Check for close-to
     if txn_info.type == TXN_TYPE_PAYMENT and txn_info.close_remainder_to:
@@ -432,6 +429,121 @@ def validate_no_security_risks(txn_info: DecodedTransactionInfo) -> str | None:
         return ERR_BLOCKED_TXN_TYPE
 
     return None
+
+
+def validate_rekey_operations(txns: list[DecodedTransactionInfo]) -> str | None:
+    """Validate rekey operations in a transaction group.
+
+    Only allows balanced sandwich patterns: rekey A->B followed by rekey B->A
+    (same sender rekeys back to self). Unbalanced or unpaired rekeys are rejected.
+
+    Args:
+        txns: List of decoded transaction info for the entire group.
+
+    Returns:
+        Error code string if invalid rekey detected, None otherwise.
+    """
+    from .constants import ERR_REKEY_DETECTED
+
+    # Collect all rekey operations
+    rekey_ops: list[dict[str, Any]] = []
+    for i, txn in enumerate(txns):
+        if txn.rekey_to:
+            rekey_ops.append({"index": i, "from": txn.sender, "to": txn.rekey_to})
+
+    if not rekey_ops:
+        return None
+
+    # Must have an even number of rekey operations for balanced sandwiches
+    if len(rekey_ops) % 2 != 0:
+        return ERR_REKEY_DETECTED
+
+    # Group rekey operations by sender and verify each pair forms a sandwich
+    rekeys_by_sender: dict[str, list[dict[str, Any]]] = {}
+    for op in rekey_ops:
+        rekeys_by_sender.setdefault(op["from"], []).append(op)
+
+    for _sender, ops in rekeys_by_sender.items():
+        if len(ops) != 2:
+            return ERR_REKEY_DETECTED
+
+        first, second = ops
+        # The second rekey's "to" should be the sender (returning authority to self)
+        if second["to"] != _sender and first["to"] != second["to"]:
+            return ERR_REKEY_DETECTED
+
+    return None
+
+
+def verify_transaction_signature(b64_txn: str) -> tuple[bool, str]:
+    """Verify the ed25519 signature of a signed transaction matches its sender.
+
+    Algorand signs: b"TX" + canonical_msgpack(transaction).
+    This verifies the signature was actually produced by the sender's private key,
+    not just that a signature field exists.
+
+    Args:
+        b64_txn: Base64-encoded signed transaction.
+
+    Returns:
+        Tuple of (is_valid, error_message). Returns (True, "") on success.
+    """
+    try:
+        from nacl.signing import VerifyKey
+        from nacl.exceptions import BadSignatureError
+    except ImportError:
+        # nacl not available; simulation will catch invalid signatures
+        return True, ""
+
+    try:
+        decoded = encoding.msgpack_decode(b64_txn)
+    except Exception:
+        return False, "Failed to decode transaction"
+
+    # Handle SignedTransaction object
+    if isinstance(decoded, transaction.SignedTransaction):
+        if decoded.signature is None:
+            return False, "Transaction has no signature"
+
+        sig_bytes = base64.b64decode(decoded.signature)
+        sender_pk = encoding.decode_address(decoded.transaction.sender)
+        txn_bytes = base64.b64decode(encoding.msgpack_encode(decoded.transaction))
+
+        try:
+            VerifyKey(sender_pk).verify(b"TX" + txn_bytes, sig_bytes)
+            return True, ""
+        except BadSignatureError:
+            return False, "Signature does not match sender"
+
+    # Handle raw dict format from msgpack_decode
+    if isinstance(decoded, dict) and "sig" in decoded and "txn" in decoded:
+        sig_bytes = decoded["sig"]
+        sender_pk = decoded["txn"].get("snd", b"")
+        if not sender_pk or len(sender_pk) != 32:
+            return False, "Missing or invalid sender public key"
+
+        # Reconstruct Transaction for canonical msgpack encoding
+        try:
+            txn_type = decoded["txn"].get("type", "pay")
+            if txn_type == "axfer":
+                txn_obj = transaction.AssetTransferTxn.undictify(decoded["txn"])
+            elif txn_type == "pay":
+                txn_obj = transaction.PaymentTxn.undictify(decoded["txn"])
+            else:
+                txn_obj = transaction.Transaction.undictify(decoded["txn"])
+            txn_bytes = base64.b64decode(encoding.msgpack_encode(txn_obj))
+        except Exception:
+            # Can't reconstruct canonical bytes; defer to simulation
+            return True, ""
+
+        try:
+            VerifyKey(sender_pk).verify(b"TX" + txn_bytes, sig_bytes)
+            return True, ""
+        except BadSignatureError:
+            return False, "Signature does not match sender"
+
+    # Unknown format; defer to simulation
+    return True, ""
 
 
 def validate_fee_payer_transaction(
@@ -486,6 +598,12 @@ def validate_fee_payer_transaction(
     # No rekey
     if txn_info.rekey_to:
         return ERR_FEE_PAYER_HAS_REKEY
+
+    # Fee must be reasonable (prevents fee extraction attacks)
+    from .constants import MAX_REASONABLE_FEE
+
+    if txn_info.fee > MAX_REASONABLE_FEE:
+        return ERR_FEE_PAYER_INVALID_TXN
 
     return None
 

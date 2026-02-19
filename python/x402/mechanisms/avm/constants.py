@@ -15,6 +15,11 @@ MIN_TXN_FEE = 1000
 # Maximum transactions in an atomic group
 MAX_GROUP_SIZE = 16
 
+# Maximum reasonable fee for fee payer transactions (16,000 microalgos)
+# Equals MAX_GROUP_SIZE * MIN_TXN_FEE — the maximum pooled fee for a full group.
+# Prevents fee extraction attacks on the facilitator's fee payer accounts.
+MAX_REASONABLE_FEE = 16000
+
 # Algorand address validation regex (58 character base32 with checksum)
 AVM_ADDRESS_REGEX = r"^[A-Z2-7]{58}$"
 

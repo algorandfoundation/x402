@@ -21,6 +21,7 @@ from ..constants import (
     ERR_EMPTY_GROUP,
     ERR_FEE_PAYER_MISSING,
     ERR_FEE_PAYER_NOT_MANAGED,
+    ERR_INVALID_SIGNATURE,
     ERR_FEE_PAYER_TRANSFERRING,
     ERR_GENESIS_HASH_MISMATCH,
     ERR_GROUP_DECODE_FAILED,
@@ -47,6 +48,8 @@ from ..utils import (
     normalize_network,
     validate_fee_payer_transaction,
     validate_no_security_risks,
+    validate_rekey_operations,
+    verify_transaction_signature,
 )
 
 
@@ -88,7 +91,8 @@ class ExactAvmScheme:
         if not addresses:
             return None
 
-        # Randomly select from available signers to distribute load
+        # Random selection distributes ALGO fee costs across multiple signer accounts,
+        # preventing any single fee payer from being depleted faster than others.
         fee_payer = random.choice(addresses)
 
         return {"feePayer": fee_payer}
@@ -116,7 +120,7 @@ class ExactAvmScheme:
         1. Check paymentGroup contains 16 or fewer elements
         2. Decode all transactions from the paymentGroup
         3. Locate payment transaction (paymentIndex):
-           - Check aamt (asset amount) >= requirements.amount
+           - Check aamt (asset amount) == requirements.amount
            - Check arcv (asset receiver) matches requirements.payTo
         4. If feePayer in requirements:
            - Locate fee payer transaction
@@ -127,7 +131,7 @@ class ExactAvmScheme:
         5. Simulate group to verify it would succeed
 
         Security checks:
-        - No rekey operations allowed
+        - No unbalanced rekey operations (sandwich rekey+rekey-back allowed)
         - No close-to operations allowed
         - keyreg transactions blocked
         - Facilitator signers cannot transfer their own funds
@@ -206,6 +210,13 @@ class ExactAvmScheme:
                     is_valid=False, invalid_reason=security_error, payer=""
                 )
 
+        # Step 6b: Validate rekey operations at group level (sandwich pattern detection)
+        rekey_error = validate_rekey_operations(decoded_txns)
+        if rekey_error:
+            return VerifyResponse(
+                is_valid=False, invalid_reason=rekey_error, payer=""
+            )
+
         # Step 7: Verify payment transaction
         payment_txn = decoded_txns[payment_index]
         payer = payment_txn.sender
@@ -226,24 +237,39 @@ class ExactAvmScheme:
                 is_valid=False, invalid_reason=ERR_INVALID_ASSET_ID, payer=payer
             )
 
-        # Verify receiver matches payTo
+        # Verify receiver matches payTo.
+        # Note: Receiver opt-in to the asset is validated during transaction simulation —
+        # if the receiver has not opted in, simulation will fail with a clear error.
         if payment_txn.asset_receiver != requirements.pay_to:
             return VerifyResponse(
                 is_valid=False, invalid_reason=ERR_RECIPIENT_MISMATCH, payer=payer
             )
 
-        # Verify amount is sufficient
+        # Verify amount matches exactly
         required_amount = int(requirements.amount)
         actual_amount = payment_txn.asset_amount or 0
-        if actual_amount < required_amount:
+        if actual_amount != required_amount:
             return VerifyResponse(
-                is_valid=False, invalid_reason=ERR_AMOUNT_INSUFFICIENT, payer=payer
+                is_valid=False,
+                invalid_reason=ERR_AMOUNT_INSUFFICIENT,
+                invalid_message=f"Expected {required_amount}, got {actual_amount}",
+                payer=payer,
             )
 
         # Verify payment transaction is signed
         if not payment_txn.is_signed:
             return VerifyResponse(
                 is_valid=False, invalid_reason=ERR_MISSING_SIGNATURE, payer=payer
+            )
+
+        # Verify the ed25519 signature was actually made by the sender
+        sig_valid, sig_error = verify_transaction_signature(payment_group[payment_index])
+        if not sig_valid:
+            return VerifyResponse(
+                is_valid=False,
+                invalid_reason=ERR_INVALID_SIGNATURE,
+                invalid_message=sig_error,
+                payer=payer,
             )
 
         # Step 8: Check for fee payer and validate if present

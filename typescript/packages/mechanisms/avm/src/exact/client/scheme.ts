@@ -94,7 +94,7 @@ export class ExactAvmScheme implements SchemeNetworkClient {
         receiver: algosdk.Address.fromString(feePayer), // Self-payment
         amount: 0,
         suggestedParams: feePayerParams,
-        note: new Uint8Array(Buffer.from("x402-fee-payer")),
+        note: new Uint8Array(Buffer.from(`x402-fee-payer-${Date.now()}`)),
       });
       transactions.push(feePayerTxn);
       paymentIndex = 1; // Payment will be second transaction
@@ -112,7 +112,7 @@ export class ExactAvmScheme implements SchemeNetworkClient {
       amount: BigInt(amount),
       assetIndex: Number(assetId),
       suggestedParams: assetTransferParams,
-      note: new Uint8Array(Buffer.from(`x402-payment-v${x402Version}`)),
+      note: new Uint8Array(Buffer.from(`x402-payment-v${x402Version}-${Date.now()}`)),
     });
     transactions.push(assetTransferTxn);
 

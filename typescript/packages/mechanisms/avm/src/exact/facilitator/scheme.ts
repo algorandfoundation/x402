@@ -5,6 +5,7 @@
  */
 
 import algosdk from "algosdk";
+import { ed25519 } from "@noble/curves/ed25519";
 import type {
   Network,
   PaymentPayload,
@@ -38,7 +39,10 @@ export const VerifyErrorReason = {
   INVALID_FEE_PAYER: "Fee payer transaction has invalid parameters",
   FEE_TOO_HIGH: "Fee payer transaction fee exceeds maximum",
   PAYMENT_NOT_SIGNED: "Payment transaction is not signed",
+  INVALID_SIGNATURE: "Payment transaction signature does not match sender",
   SIMULATION_FAILED: "Transaction simulation failed",
+  FACILITATOR_TRANSFERRING_FUNDS: "Facilitator signer cannot be the payment sender",
+  GENESIS_HASH_MISMATCH: "Transaction genesis hash does not match expected network",
   // Security error reasons
   UNSIGNED_NON_FACILITATOR_TXN: "Unsigned transaction from non-facilitator address",
   SECURITY_REKEY_NOT_ALLOWED: "Rekey transactions are not allowed",
@@ -76,7 +80,8 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
       return undefined;
     }
 
-    // Random selection for load balancing
+    // Random selection distributes ALGO fee costs across multiple signer accounts,
+    // preventing any single fee payer from being depleted faster than others.
     const randomIndex = Math.floor(Math.random() * addresses.length);
     return { feePayer: addresses[randomIndex] };
   }
@@ -132,6 +137,29 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
     const decoded = this.decodeTransactionGroup(paymentGroup, facilitatorAddresses);
     if ("error" in decoded) return decoded.error;
 
+    // Extract payer from payment transaction
+    const paymentTxn = decoded.txns[paymentIndex].txn;
+    const payer = algosdk.encodeAddress(paymentTxn.sender.publicKey);
+
+    // Validate genesis hash matches network
+    const networkStr = String(requirements.network);
+    if (networkStr.startsWith("algorand:")) {
+      const expectedGenesisHash = networkStr.slice("algorand:".length);
+      for (const stxn of decoded.txns) {
+        const txnGenesisHash = stxn.txn.genesisHash
+          ? Buffer.from(stxn.txn.genesisHash).toString("base64")
+          : "";
+        if (txnGenesisHash !== expectedGenesisHash) {
+          return { isValid: false, invalidReason: VerifyErrorReason.GENESIS_HASH_MISMATCH };
+        }
+      }
+    }
+
+    // SECURITY: Verify facilitator's signers are not transferring their own funds
+    if (facilitatorAddresses.includes(payer)) {
+      return { isValid: false, invalidReason: VerifyErrorReason.FACILITATOR_TRANSFERRING_FUNDS };
+    }
+
     // Security constraints on all transactions
     const securityCheck = this.verifySecurityConstraints(decoded.txns);
     if (!securityCheck.isValid) return securityCheck;
@@ -147,7 +175,10 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
     if ("error" in prepared) return prepared.error;
 
     // Simulate the assembled group
-    return this.simulateTransactionGroup(prepared.signedTxns, requirements.network);
+    const simResult = await this.simulateTransactionGroup(prepared.signedTxns, requirements.network);
+    if (!simResult.isValid) return simResult;
+
+    return { isValid: true, payer };
   }
 
   /**
@@ -312,6 +343,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
         errorReason: verification.invalidReason,
         transaction: "",
         network: requirements.network,
+        payer: verification.payer,
       };
     }
 
@@ -371,6 +403,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
         success: true,
         transaction: paymentTxId,
         network: requirements.network,
+        payer: verification.payer,
       };
     } catch (error) {
       return {
@@ -378,6 +411,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
         errorReason: `Failed to submit transaction: ${error instanceof Error ? error.message : "Unknown error"}`,
         transaction: "",
         network: requirements.network,
+        payer: verification.payer,
       };
     }
   }
@@ -419,16 +453,19 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
       };
     }
 
-    const amount = (assetTransfer.amount ?? BigInt(0)).toString();
+    // Use BigInt comparison to avoid string format mismatches (e.g. "1000" vs "1000.0")
+    const amount = assetTransfer.amount ?? BigInt(0);
 
-    if (amount !== requirements.amount) {
+    if (amount !== BigInt(requirements.amount)) {
       return {
         isValid: false,
-        invalidReason: `${VerifyErrorReason.AMOUNT_MISMATCH}: expected ${requirements.amount}, got ${amount}`,
+        invalidReason: `${VerifyErrorReason.AMOUNT_MISMATCH}: expected ${requirements.amount}, got ${amount.toString()}`,
       };
     }
 
-    // Verify receiver
+    // Verify receiver address matches payTo.
+    // Note: Receiver opt-in to the asset is validated during transaction simulation —
+    // if the receiver has not opted in, simulation will fail with a clear error.
     const receiver = assetTransfer.receiver
       ? algosdk.encodeAddress(assetTransfer.receiver.publicKey)
       : "";
@@ -457,6 +494,23 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
         isValid: false,
         invalidReason: VerifyErrorReason.PAYMENT_NOT_SIGNED,
       };
+    }
+
+    // Verify the ed25519 signature was actually made by the sender
+    if (stxn.sig) {
+      const rawTxnBytes = txn.toByte();
+      const signedMsg = new Uint8Array(2 + rawTxnBytes.length);
+      signedMsg[0] = 0x54; // 'T'
+      signedMsg[1] = 0x58; // 'X'
+      signedMsg.set(rawTxnBytes, 2);
+
+      const isValidSig = ed25519.verify(stxn.sig, signedMsg, txn.sender.publicKey);
+      if (!isValidSig) {
+        return {
+          isValid: false,
+          invalidReason: VerifyErrorReason.INVALID_SIGNATURE,
+        };
+      }
     }
 
     return { isValid: true };
@@ -491,6 +545,18 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
         isValid: false,
         invalidReason: `${VerifyErrorReason.INVALID_FEE_PAYER}: amount must be 0`,
       };
+    }
+
+    // Must be self-payment (receiver == sender)
+    if (paymentFields?.receiver) {
+      const receiverAddr = algosdk.encodeAddress(paymentFields.receiver.publicKey);
+      const senderAddr = algosdk.encodeAddress(txn.sender.publicKey);
+      if (receiverAddr !== senderAddr) {
+        return {
+          isValid: false,
+          invalidReason: `${VerifyErrorReason.INVALID_FEE_PAYER}: receiver must be same as sender (self-payment)`,
+        };
+      }
     }
 
     // Must not have close remainder to
