@@ -11,6 +11,9 @@ import { toFacilitatorEvmSigner } from "@x402/evm";
 import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { toFacilitatorSvmSigner } from "@x402/svm";
 import { ExactSvmScheme } from "@x402/svm/exact/facilitator";
+import { DEFAULT_ALGOD_TESTNET } from "@x402/avm";
+import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
+import algosdk from "algosdk";
 import dotenv from "dotenv";
 import express from "express";
 import { createWalletClient, http, publicActions } from "viem";
@@ -30,6 +33,11 @@ if (!process.env.EVM_PRIVATE_KEY) {
 
 if (!process.env.SVM_PRIVATE_KEY) {
   console.error("❌ SVM_PRIVATE_KEY environment variable is required");
+  process.exit(1);
+}
+
+if (!process.env.AVM_PRIVATE_KEY) {
+  console.error("❌ AVM_PRIVATE_KEY environment variable is required");
   process.exit(1);
 }
 
@@ -95,6 +103,49 @@ const evmSigner = toFacilitatorEvmSigner({
 // Facilitator can now handle all Solana networks with automatic RPC creation
 const svmSigner = toFacilitatorSvmSigner(svmAccount);
 
+// Initialize the AVM account from private key
+const avmSecretKey = Buffer.from(process.env.AVM_PRIVATE_KEY as string, "base64");
+if (avmSecretKey.length !== 64) {
+  throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)");
+}
+const avmAddress = algosdk.encodeAddress(avmSecretKey.slice(32));
+console.info(`AVM Facilitator account: ${avmAddress}`);
+
+const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
+
+const avmSigner = {
+  getAddresses: () => [avmAddress] as readonly string[],
+
+  signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
+    const decoded = algosdk.decodeUnsignedTransaction(txn);
+    const signed = algosdk.signTransaction(decoded, avmSecretKey);
+    return signed.blob;
+  },
+
+  getAlgodClient: (_network: string) => algodClient,
+
+  simulateTransactions: async (txns: Uint8Array[], _network: string) => {
+    const request = new algosdk.modelsv2.SimulateRequest({
+      txnGroups: [
+        new algosdk.modelsv2.SimulateRequestTransactionGroup({
+          txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
+        }),
+      ],
+      allowUnnamedResources: true,
+    });
+    return await algodClient.simulateTransactions(request).do();
+  },
+
+  sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
+    const response = await algodClient.sendRawTransaction(signedTxns).do();
+    return response.txid;
+  },
+
+  waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
+    return await algosdk.waitForConfirmation(algodClient, txId, waitRounds);
+  },
+};
+
 const facilitator = new x402Facilitator()
   .onBeforeVerify(async (context) => {
     console.log("Before verify", context);
@@ -115,9 +166,10 @@ const facilitator = new x402Facilitator()
     console.log("Settle failure", context);
   });
 
-// Register EVM and SVM schemes
+// Register EVM, SVM, and AVM schemes
 facilitator.register("eip155:84532", new ExactEvmScheme(evmSigner, { deployERC4337WithEIP6492: true })); // Base Sepolia
 facilitator.register("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", new ExactSvmScheme(svmSigner)); // Devnet
+facilitator.register("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", new ExactAvmScheme(avmSigner)); // Algorand Testnet
 
 // Initialize Express app
 const app = express();
