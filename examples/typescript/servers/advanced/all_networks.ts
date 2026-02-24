@@ -5,12 +5,13 @@
  * optional chain configuration via environment variables.
  *
  * New chain support should be added here in alphabetic order by network prefix
- * (e.g., "eip155" before "solana").
+ * (e.g., "algorand" before "eip155" before "solana").
  */
 
 import { config } from "dotenv";
 import express from "express";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { ExactAvmScheme } from "@x402/avm/exact/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
@@ -18,12 +19,13 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 config();
 
 // Configuration - optional per network
+const avmAddress = process.env.AVM_ADDRESS as string | undefined;
 const evmAddress = process.env.EVM_ADDRESS as `0x${string}` | undefined;
 const svmAddress = process.env.SVM_ADDRESS as string | undefined;
 
 // Validate at least one address is provided
-if (!evmAddress && !svmAddress) {
-  console.error("❌ At least one of EVM_ADDRESS or SVM_ADDRESS is required");
+if (!avmAddress && !evmAddress && !svmAddress) {
+  console.error("❌ At least one of AVM_ADDRESS, EVM_ADDRESS, or SVM_ADDRESS is required");
   process.exit(1);
 }
 
@@ -34,6 +36,7 @@ if (!facilitatorUrl) {
 }
 
 // Network configuration
+const AVM_NETWORK = "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=" as const; // Algorand Testnet
 const EVM_NETWORK = "eip155:84532" as const; // Base Sepolia
 const SVM_NETWORK = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1" as const; // Solana Devnet
 
@@ -44,6 +47,14 @@ const accepts: Array<{
   network: `${string}:${string}`;
   payTo: string;
 }> = [];
+if (avmAddress) {
+  accepts.push({
+    scheme: "exact",
+    price: "$0.001",
+    network: AVM_NETWORK,
+    payTo: avmAddress,
+  });
+}
 if (evmAddress) {
   accepts.push({
     scheme: "exact",
@@ -66,6 +77,9 @@ const facilitatorClient = new HTTPFacilitatorClient({ url: facilitatorUrl });
 
 // Create x402 resource server and register schemes dynamically
 const server = new x402ResourceServer(facilitatorClient);
+if (avmAddress) {
+  server.register(AVM_NETWORK, new ExactAvmScheme());
+}
 if (evmAddress) {
   server.register(EVM_NETWORK, new ExactEvmScheme());
 }
@@ -109,6 +123,9 @@ app.get("/health", (req, res) => {
 const port = process.env.PORT || 4021;
 app.listen(port, () => {
   console.log(`🚀 All Networks Server listening at http://localhost:${port}`);
+  if (avmAddress) {
+    console.log(`   AVM: ${avmAddress} on ${AVM_NETWORK}`);
+  }
   if (evmAddress) {
     console.log(`   EVM: ${evmAddress} on ${EVM_NETWORK}`);
   }

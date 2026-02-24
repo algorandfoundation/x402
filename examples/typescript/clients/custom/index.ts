@@ -10,6 +10,8 @@ import {
 } from "@x402/core/http";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
+import { ExactAvmScheme } from "@x402/avm/exact/client";
+import algosdk from "algosdk";
 import type { PaymentRequirements } from "@x402/core/types";
 
 config();
@@ -28,6 +30,7 @@ config();
 
 const evmPrivateKey = process.env.EVM_PRIVATE_KEY as `0x${string}`;
 const svmPrivateKey = process.env.SVM_PRIVATE_KEY as string;
+const avmPrivateKey = process.env.AVM_PRIVATE_KEY as string;
 const baseURL = process.env.SERVER_URL || "http://localhost:4021";
 const url = `${baseURL}/weather`;
 
@@ -110,6 +113,24 @@ async function main(): Promise<void> {
   const evmSigner = privateKeyToAccount(evmPrivateKey);
   const solanaSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
 
+  const secretKey = Buffer.from(avmPrivateKey, "base64");
+  if (secretKey.length !== 64) {
+    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
+  }
+  const address = algosdk.encodeAddress(secretKey.slice(32));
+  const avmSigner = {
+    address,
+    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+      return txns.map((txn, i) => {
+        if (indexesToSign && !indexesToSign.includes(i)) return null;
+        const decoded = algosdk.decodeUnsignedTransaction(txn);
+        const signed = algosdk.signTransaction(decoded, secretKey);
+        return signed.blob;
+      });
+    },
+  };
+  console.info(`AVM signer: ${address}`);
+
   // Custom selector - pick which payment option to use
   // This selects the second payment option (Solana)
   // Create your own logic here to select preferred payment option
@@ -121,7 +142,9 @@ async function main(): Promise<void> {
 
   const client = new x402Client(selectPayment)
     .register("eip155:*", new ExactEvmScheme(evmSigner))
-    .register("solana:*", new ExactSvmScheme(solanaSigner));
+    .register("solana:*", new ExactSvmScheme(solanaSigner))
+    .register("algorand:*", new ExactAvmScheme(avmSigner));
+
   console.log("✅ Client ready\n");
 
   await makeRequestWithPayment(client, url);

@@ -11,12 +11,16 @@ import { ExactEvmSchemeV1 } from "@x402/evm/exact/v1/facilitator";
 import { toFacilitatorSvmSigner } from "@x402/svm";
 import { ExactSvmScheme } from "@x402/svm/exact/facilitator";
 import { ExactSvmSchemeV1 } from "@x402/svm/exact/v1/facilitator";
+import { DEFAULT_ALGOD_TESTNET } from "@x402/avm";
+import algosdk from "algosdk";
+import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
+import { ExactAvmSchemeV1 } from "@x402/avm/exact/v1/facilitator";
 import { createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 
 /**
- * Initialize and configure the x402 facilitator with EVM, SVM, and Aptos support
+ * Initialize and configure the x402 facilitator with EVM, SVM, AVM, and Aptos support
  * This is called lazily on first use to support Next.js module loading
  *
  * @returns A configured x402Facilitator instance
@@ -29,6 +33,11 @@ async function createFacilitator(): Promise<x402Facilitator> {
 
   if (!process.env.FACILITATOR_SVM_PRIVATE_KEY) {
     throw new Error("❌ FACILITATOR_SVM_PRIVATE_KEY environment variable is required");
+  }
+
+  const avmPrivateKey = process.env.FACILITATOR_AVM_PRIVATE_KEY || process.env.PRIVATE_KEY;
+  if (!avmPrivateKey) {
+    throw new Error("❌ FACILITATOR_AVM_PRIVATE_KEY environment variable is required");
   }
 
   // Initialize the EVM account from private key
@@ -91,12 +100,61 @@ async function createFacilitator(): Promise<x402Facilitator> {
   // Initialize SVM signer - handles all Solana networks with automatic RPC creation
   const svmSigner = toFacilitatorSvmSigner(svmAccount);
 
-  // Create and configure the facilitator with EVM and SVM
+  // Initialize the AVM account from private key
+  const secretKey = Buffer.from(avmPrivateKey, "base64");
+  if (secretKey.length !== 64) {
+    throw new Error(
+      "FACILITATOR_AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)",
+    );
+  }
+  const avmAddress = algosdk.encodeAddress(secretKey.slice(32));
+  const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
+
+  // Initialize AVM signer
+  const avmSigner = {
+    getAddresses: () => [avmAddress] as readonly string[],
+
+    signTransaction: async (txn: Uint8Array, _: string) => {
+      const decoded = algosdk.decodeUnsignedTransaction(txn);
+      const signed = algosdk.signTransaction(decoded, secretKey);
+      return signed.blob;
+    },
+
+    getAlgodClient: (_: string) => algodClient,
+
+    simulateTransactions: async (txns: Uint8Array[], _: string) => {
+      const request = new algosdk.modelsv2.SimulateRequest({
+        txnGroups: [
+          new algosdk.modelsv2.SimulateRequestTransactionGroup({
+            txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
+          }),
+        ],
+        allowUnnamedResources: true,
+      });
+      return await algodClient.simulateTransactions(request).do();
+    },
+
+    sendTransactions: async (signedTxns: Uint8Array[], _: string) => {
+      const response = await algodClient.sendRawTransaction(signedTxns).do();
+      return response.txid;
+    },
+
+    waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
+      return await algosdk.waitForConfirmation(algodClient, txId, waitRounds);
+    },
+  };
+
+  // Create and configure the facilitator with all networks
   const facilitator = new x402Facilitator()
     .register("eip155:84532", new ExactEvmScheme(evmSigner))
     .registerV1("base-sepolia" as Network, new ExactEvmSchemeV1(evmSigner))
     .register("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", new ExactSvmScheme(svmSigner))
-    .registerV1("solana-devnet" as Network, new ExactSvmSchemeV1(svmSigner));
+    .registerV1("solana-devnet" as Network, new ExactSvmSchemeV1(svmSigner))
+    .register(
+      "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
+      new ExactAvmScheme(avmSigner),
+    )
+    .registerV1("algorand-testnet" as Network, new ExactAvmSchemeV1(avmSigner));
 
   // Optionally register Aptos if configured
   if (process.env.FACILITATOR_APTOS_PRIVATE_KEY) {

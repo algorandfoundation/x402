@@ -1,6 +1,6 @@
 # Advanced x402 Client Examples
 
-Advanced patterns for x402 TypeScript clients demonstrating builder pattern registration, payment lifecycle hooks, and network preferences.
+Advanced patterns for x402 TypeScript clients demonstrating builder pattern registration, payment lifecycle hooks, and network preferences. Supports EVM (Ethereum), SVM (Solana), and AVM (Algorand) networks.
 
 ```typescript
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
@@ -40,6 +40,7 @@ and fill required environment variables:
 
 - `EVM_PRIVATE_KEY` - Ethereum private key for EVM payments
 - `SVM_PRIVATE_KEY` - Solana private key for SVM payments
+- `AVM_PRIVATE_KEY` - Base64-encoded 64-byte Algorand private key for AVM payments
 
 2. Install and build all packages from the typescript examples root:
 
@@ -59,12 +60,11 @@ pnpm dev
 
 Each example demonstrates a specific advanced pattern:
 
-| Example | Command | Description |
-| --- | --- | --- |
-| `all-networks` | `pnpm dev:all-networks` | All supported networks with optional chain configuration |
-| `builder-pattern` | `pnpm dev:builder-pattern` | Fine-grained network registration |
-| `hooks` | `pnpm dev:hooks` | Payment lifecycle hooks |
-| `preferred-network` | `pnpm dev:preferred-network` | Client-side network preferences |
+| Example             | Command                      | Description                       |
+| ------------------- | ---------------------------- | --------------------------------- |
+| `builder-pattern`   | `pnpm dev:builder-pattern`   | Fine-grained network registration |
+| `hooks`             | `pnpm dev:hooks`             | Payment lifecycle hooks           |
+| `preferred-network` | `pnpm dev:preferred-network` | Client-side network preferences   |
 
 ## Testing the Examples
 
@@ -90,16 +90,31 @@ Use the builder pattern for fine-grained control over which networks are support
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
+import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
+import algosdk from "algosdk";
 
 const evmSigner = privateKeyToAccount(evmPrivateKey);
 const mainnetSigner = privateKeyToAccount(mainnetPrivateKey);
+const secretKey = Buffer.from(avmPrivateKey, "base64");
+const avmSigner = {
+  address: algosdk.encodeAddress(secretKey.slice(32)),
+  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+    return txns.map((txn, i) => {
+      if (indexesToSign && !indexesToSign.includes(i)) return null;
+      const decoded = algosdk.decodeUnsignedTransaction(txn);
+      const signed = algosdk.signTransaction(decoded, secretKey);
+      return signed.blob;
+    });
+  },
+};
 
 // More specific patterns take precedence over wildcards
 const client = new x402Client()
   .register("eip155:*", new ExactEvmScheme(evmSigner)) // All EVM networks
   .register("eip155:1", new ExactEvmScheme(mainnetSigner)) // Ethereum mainnet override
-  .register("solana:*", new ExactSvmScheme(svmSigner)); // All Solana networks
+  .register("solana:*", new ExactSvmScheme(svmSigner)) // All Solana networks
+  .register("algorand:*", new ExactAvmScheme(avmSigner)); // All Algorand networks
 
 const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 const response = await fetchWithPayment("http://localhost:4021/weather");
@@ -162,9 +177,11 @@ Configure client-side network preferences with automatic fallback:
 import { x402Client, wrapFetchWithPayment, type PaymentRequirements } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
+import { ExactAvmScheme } from "@x402/avm/exact/client";
+import algosdk from "algosdk";
 
 // Define network preference order (most preferred first)
-const networkPreferences = ["solana:", "eip155:"];
+const networkPreferences = ["algorand:", "solana:", "eip155:"];
 
 const preferredNetworkSelector = (
   _x402Version: number,
@@ -179,9 +196,23 @@ const preferredNetworkSelector = (
   return options[0];
 };
 
+const secretKey = Buffer.from(avmPrivateKey, "base64");
+const avmSigner = {
+  address: algosdk.encodeAddress(secretKey.slice(32)),
+  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+    return txns.map((txn, i) => {
+      if (indexesToSign && !indexesToSign.includes(i)) return null;
+      const decoded = algosdk.decodeUnsignedTransaction(txn);
+      const signed = algosdk.signTransaction(decoded, secretKey);
+      return signed.blob;
+    });
+  },
+};
+
 const client = new x402Client(preferredNetworkSelector)
   .register("eip155:*", new ExactEvmScheme(evmSigner))
-  .register("solana:*", new ExactSvmScheme(svmSigner));
+  .register("solana:*", new ExactSvmScheme(svmSigner))
+  .register("algorand:*", new ExactAvmScheme(avmSigner));
 
 const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 const response = await fetchWithPayment("http://localhost:4021/weather");
@@ -191,6 +222,35 @@ const response = await fetchWithPayment("http://localhost:4021/weather");
 
 - Prefer payments on specific chains
 - User preference settings in wallet UIs
+
+## Multi-Network Support
+
+All examples support EVM, SVM, and AVM networks registered as first-class citizens:
+
+```typescript
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { ExactSvmScheme } from "@x402/svm/exact/client";
+import { ExactAvmScheme } from "@x402/avm/exact/client";
+import algosdk from "algosdk";
+
+const secretKey = Buffer.from(avmPrivateKey, "base64");
+const avmSigner = {
+  address: algosdk.encodeAddress(secretKey.slice(32)),
+  signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+    return txns.map((txn, i) => {
+      if (indexesToSign && !indexesToSign.includes(i)) return null;
+      const decoded = algosdk.decodeUnsignedTransaction(txn);
+      const signed = algosdk.signTransaction(decoded, secretKey);
+      return signed.blob;
+    });
+  },
+};
+
+const client = new x402Client()
+  .register("eip155:*", new ExactEvmScheme(privateKeyToAccount(evmPrivateKey)))
+  .register("solana:*", new ExactSvmScheme(svmSigner))
+  .register("algorand:*", new ExactAvmScheme(avmSigner));
+```
 
 ## Hook Best Practices
 
