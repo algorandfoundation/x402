@@ -140,6 +140,56 @@ const avmSigner: ClientAvmSigner = {
 
 See [facilitator example](../../examples/typescript/facilitator/) for a full `FacilitatorAvmSigner` implementation.
 
+## Environment Variables
+
+### Client Applications
+
+Applications that make payments using an Algorand wallet.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AVM_PRIVATE_KEY` | Yes | Base64-encoded 64-byte Algorand private key (32-byte seed + 32-byte public key). Used to sign payment transactions. |
+| `ALGOD_TESTNET_URL` | No | Custom Algorand Testnet API endpoint. Defaults to `https://testnet-api.algonode.cloud`. |
+| `ALGOD_MAINNET_URL` | No | Custom Algorand Mainnet API endpoint. Defaults to `https://mainnet-api.algonode.cloud`. |
+
+### Server (Resource Provider)
+
+Servers that accept payments and build payment requirements.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AVM_ADDRESS` | Yes | Algorand wallet address to receive payments (58-character base32 address). |
+
+### Facilitator
+
+Payment processors that verify and settle transactions on-chain.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AVM_PRIVATE_KEY` | Yes | Base64-encoded 64-byte Algorand private key. Used to submit settlement transactions and pay fees. |
+| `ALGOD_SERVER` | No | Custom Algod HTTP server URL for direct node access. Defaults to AlgoNode testnet. |
+| `ALGOD_TOKEN` | No | Algod API authentication token. Not needed when using AlgoNode public endpoints. |
+| `ALGOD_TESTNET_URL` | No | Custom Algorand Testnet API endpoint. Defaults to `https://testnet-api.algonode.cloud`. |
+| `ALGOD_MAINNET_URL` | No | Custom Algorand Mainnet API endpoint. Defaults to `https://mainnet-api.algonode.cloud`. |
+
+### Key Format
+
+The `AVM_PRIVATE_KEY` is a Base64-encoded string containing a 64-byte Algorand private key:
+- First 32 bytes: Ed25519 seed (signing key)
+- Last 32 bytes: Ed25519 public key
+
+To derive the Algorand address from the private key:
+
+```typescript
+import algosdk from "algosdk";
+const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, "base64");
+const address = algosdk.encodeAddress(secretKey.slice(32));
+```
+
+### Algod Node Defaults
+
+When `ALGOD_TESTNET_URL` and `ALGOD_MAINNET_URL` are not set, the SDK defaults to [AlgoNode](https://algonode.io/) public endpoints which are free, require no authentication, and support both Testnet and Mainnet.
+
 ## Asset Support
 
 Supports Algorand Standard Assets (ASA):

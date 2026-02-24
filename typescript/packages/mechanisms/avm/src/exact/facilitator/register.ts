@@ -4,12 +4,12 @@
  * Registers AVM exact payment schemes to an x402Facilitator instance.
  */
 
-import { x402Facilitator } from "@x402/core/facilitator";
-import type { Network } from "@x402/core/types";
-import type { FacilitatorAvmSigner } from "../../signer";
-import { ExactAvmScheme } from "./scheme";
-import { ExactAvmSchemeV1 } from "../v1/facilitator/scheme";
-import { NETWORKS } from "../../v1";
+import { x402Facilitator } from '@x402/core/facilitator'
+import type { Network } from '@x402/core/types'
+import type { FacilitatorAvmSigner } from '../../signer'
+import { ExactAvmScheme } from './scheme'
+import { ExactAvmSchemeV1 } from '../v1/facilitator/scheme'
+import { NETWORKS } from '../../v1'
 
 /**
  * Configuration options for registering AVM schemes to an x402Facilitator
@@ -18,13 +18,13 @@ export interface AvmFacilitatorConfig {
   /**
    * The AVM signer for facilitator operations (verify and settle)
    */
-  signer: FacilitatorAvmSigner;
+  signer: FacilitatorAvmSigner
 
   /**
    * Networks to register (single network or array of networks)
    * Examples: "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=", ["algorand-mainnet", "algorand-testnet"]
    */
-  networks: Network | Network[];
+  networks: Network | Network[]
 }
 
 /**
@@ -64,10 +64,10 @@ export function registerExactAvmScheme(
   config: AvmFacilitatorConfig,
 ): x402Facilitator {
   // Register V2 scheme with specified networks
-  facilitator.register(config.networks, new ExactAvmScheme(config.signer));
+  facilitator.register(config.networks, new ExactAvmScheme(config.signer))
 
   // Register all V1 networks
-  facilitator.registerV1(NETWORKS as Network[], new ExactAvmSchemeV1(config.signer));
+  facilitator.registerV1(NETWORKS as Network[], new ExactAvmSchemeV1(config.signer))
 
-  return facilitator;
+  return facilitator
 }

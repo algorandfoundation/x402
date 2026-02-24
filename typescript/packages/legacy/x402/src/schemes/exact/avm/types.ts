@@ -13,6 +13,9 @@ export type ExactAvmPayload = z.infer<typeof ExactAvmPayloadSchema>;
 
 /**
  * Type guard for ExactAvmPayload
+ *
+ * @param payload - The value to check
+ * @returns True if the value is a valid ExactAvmPayload
  */
 export function isExactAvmPayload(payload: unknown): payload is ExactAvmPayload {
   return ExactAvmPayloadSchema.safeParse(payload).success;

@@ -115,11 +115,7 @@ export async function settle<transport extends Transport, chain extends Chain>(
 
     // avm (Algorand)
     if (SupportedAVMNetworks.includes(paymentRequirements.network)) {
-      return await settleExactAvm(
-        client as AvmWalletAccount,
-        payload,
-        paymentRequirements,
-      );
+      return await settleExactAvm(client as AvmWalletAccount, payload, paymentRequirements);
     }
   }
 

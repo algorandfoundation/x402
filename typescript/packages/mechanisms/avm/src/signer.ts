@@ -26,7 +26,7 @@
  * ```
  */
 
-import type { Network } from "@x402/core/types";
+import type { Network } from '@x402/core/types'
 
 /**
  * Client-side signer interface for Algorand wallets
@@ -38,7 +38,7 @@ export interface ClientAvmSigner {
   /**
    * The Algorand address of the signer
    */
-  address: string;
+  address: string
 
   /**
    * Sign one or more transactions
@@ -47,10 +47,7 @@ export interface ClientAvmSigner {
    * @param indexesToSign - Optional array of indexes to sign (if not provided, sign all)
    * @returns Promise resolving to array of signed transactions (null for unsigned)
    */
-  signTransactions(
-    txns: Uint8Array[],
-    indexesToSign?: number[],
-  ): Promise<(Uint8Array | null)[]>;
+  signTransactions(txns: Uint8Array[], indexesToSign?: number[]): Promise<(Uint8Array | null)[]>
 }
 
 /**
@@ -61,17 +58,17 @@ export interface ClientAvmConfig {
    * Pre-configured Algod client (takes precedence over URL)
    * Should be an algosdk.Algodv2 instance
    */
-  algodClient?: unknown;
+  algodClient?: unknown
 
   /**
    * Algod API URL (used if algodClient not provided)
    */
-  algodUrl?: string;
+  algodUrl?: string
 
   /**
    * Algod API token
    */
-  algodToken?: string;
+  algodToken?: string
 }
 
 /**
@@ -109,7 +106,7 @@ export interface FacilitatorAvmSigner {
    *
    * @returns Array of Algorand addresses
    */
-  getAddresses(): readonly string[];
+  getAddresses(): readonly string[]
 
   /**
    * Sign a transaction with the signer matching the sender address
@@ -118,7 +115,7 @@ export interface FacilitatorAvmSigner {
    * @param senderAddress - Expected sender address (for verification)
    * @returns Promise resolving to signed transaction bytes
    */
-  signTransaction(txn: Uint8Array, senderAddress: string): Promise<Uint8Array>;
+  signTransaction(txn: Uint8Array, senderAddress: string): Promise<Uint8Array>
 
   /**
    * Get Algod client for a specific network
@@ -126,7 +123,7 @@ export interface FacilitatorAvmSigner {
    * @param network - Network identifier (CAIP-2 or V1 format)
    * @returns Algod client instance (algosdk.Algodv2)
    */
-  getAlgodClient(network: Network): unknown;
+  getAlgodClient(network: Network): unknown
 
   /**
    * Simulate a transaction group before submission
@@ -135,7 +132,7 @@ export interface FacilitatorAvmSigner {
    * @param network - Network identifier
    * @returns Promise resolving to simulation response
    */
-  simulateTransactions(txns: Uint8Array[], network: Network): Promise<unknown>;
+  simulateTransactions(txns: Uint8Array[], network: Network): Promise<unknown>
 
   /**
    * Submit signed transactions to the network
@@ -144,7 +141,7 @@ export interface FacilitatorAvmSigner {
    * @param network - Network identifier
    * @returns Promise resolving to transaction ID
    */
-  sendTransactions(signedTxns: Uint8Array[], network: Network): Promise<string>;
+  sendTransactions(signedTxns: Uint8Array[], network: Network): Promise<string>
 
   /**
    * Wait for a transaction to be confirmed
@@ -154,11 +151,7 @@ export interface FacilitatorAvmSigner {
    * @param waitRounds - Number of rounds to wait (default: 4)
    * @returns Promise resolving to pending transaction info
    */
-  waitForConfirmation(
-    txId: string,
-    network: Network,
-    waitRounds?: number,
-  ): Promise<unknown>;
+  waitForConfirmation(txId: string, network: Network, waitRounds?: number): Promise<unknown>
 }
 
 /**
@@ -168,17 +161,17 @@ export interface FacilitatorAvmSignerConfig {
   /**
    * Algod URL for mainnet
    */
-  mainnetUrl?: string;
+  mainnetUrl?: string
 
   /**
    * Algod URL for testnet
    */
-  testnetUrl?: string;
+  testnetUrl?: string
 
   /**
    * Algod API token
    */
-  algodToken?: string;
+  algodToken?: string
 }
 
 /**
@@ -189,11 +182,11 @@ export interface FacilitatorAvmSignerConfig {
  */
 export function isAvmSignerWallet(wallet: unknown): wallet is ClientAvmSigner {
   return (
-    typeof wallet === "object" &&
+    typeof wallet === 'object' &&
     wallet !== null &&
-    "address" in wallet &&
-    typeof (wallet as ClientAvmSigner).address === "string" &&
-    "signTransactions" in wallet &&
-    typeof (wallet as ClientAvmSigner).signTransactions === "function"
-  );
+    'address' in wallet &&
+    typeof (wallet as ClientAvmSigner).address === 'string' &&
+    'signTransactions' in wallet &&
+    typeof (wallet as ClientAvmSigner).signTransactions === 'function'
+  )
 }

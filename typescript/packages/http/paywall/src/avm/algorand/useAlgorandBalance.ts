@@ -61,11 +61,13 @@ export function useAlgorandBalance({
 
         // algosdk v3 returns assets with assetId (camelCase) property
         // Handle both v2 (asset-id) and v3 (assetId) formats for compatibility
-        const assets = accountInfo.assets as unknown as Array<{
-          assetId?: bigint;
-          "asset-id"?: number;
-          amount: bigint | number;
-        }> | undefined;
+        const assets = accountInfo.assets as unknown as
+          | Array<{
+              assetId?: bigint;
+              "asset-id"?: number;
+              amount: bigint | number;
+            }>
+          | undefined;
 
         // Find the USDC asset holding
         const assetHolding = assets?.find(a => {

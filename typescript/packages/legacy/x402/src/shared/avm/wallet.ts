@@ -25,14 +25,14 @@ export interface AlgodClientOptions {
  */
 export interface AvmSigner {
   address: string;
-  signTransactions(
-    txns: Uint8Array[],
-    indexesToSign?: number[],
-  ): Promise<(Uint8Array | null)[]>;
+  signTransactions(txns: Uint8Array[], indexesToSign?: number[]): Promise<(Uint8Array | null)[]>;
 }
 
 /**
  * Type guard to check if a wallet is an AVM signer
+ *
+ * @param wallet - The value to check
+ * @returns True if the wallet implements the AvmSigner interface
  */
 export function isSignerWallet(wallet: unknown): wallet is AvmSigner {
   return (
@@ -148,6 +148,9 @@ export function createSigner(
 
 /**
  * Creates an AVM signer from an algosdk account
+ *
+ * @param account - The algosdk Account to create a signer from
+ * @returns An AvmSigner that signs transactions using the account's secret key
  */
 export function createSignerFromAccount(account: algosdk.Account): AvmSigner {
   return {
@@ -173,6 +176,9 @@ export function createSignerFromAccount(account: algosdk.Account): AvmSigner {
 
 /**
  * Creates an AVM signer from a mnemonic
+ *
+ * @param mnemonic - The 25-word Algorand mnemonic phrase
+ * @returns An AvmSigner that signs transactions using the derived account
  */
 export async function createSignerFromMnemonic(mnemonic: string): Promise<AvmSigner> {
   const account = algosdk.mnemonicToSecretKey(mnemonic);

@@ -9,6 +9,13 @@
   ],
   "endpoints": [
     {
+      "path": "/protected-avm",
+      "method": "GET",
+      "description": "Protected endpoint requiring payment on AVM network",
+      "requiresPayment": true,
+      "protocolFamily": "avm"
+    },
+    {
       "path": "/protected",
       "method": "GET",
       "description": "Protected endpoint requiring EIP-3009 payment",
@@ -59,6 +66,7 @@
       "FACILITATOR_URL"
     ],
     "optional": [
+      "AVM_PAYEE_ADDRESS",
       "APTOS_PAYEE_ADDRESS"
     ]
   }

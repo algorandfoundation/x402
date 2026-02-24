@@ -14,8 +14,13 @@
 import { Account, Ed25519PrivateKey, PrivateKey, PrivateKeyVariants } from "@aptos-labs/ts-sdk";
 import { base58 } from "@scure/base";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
+import algosdk from "algosdk";
 import { toFacilitatorAptosSigner } from "@x402/aptos";
 import { ExactAptosScheme } from "@x402/aptos/exact/facilitator";
+import { DEFAULT_ALGOD_TESTNET } from "@x402/avm";
+import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
+import { ExactAvmSchemeV1 } from "@x402/avm/exact/v1/facilitator";
+import { NETWORKS as AVM_V1_NETWORKS } from "@x402/avm/v1";
 import { x402Facilitator } from "@x402/core/facilitator";
 import {
   Network,
@@ -46,6 +51,7 @@ dotenv.config();
 
 // Configuration
 const PORT = process.env.PORT || "4022";
+const AVM_NETWORK = (process.env.AVM_NETWORK || "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=") as `${string}:${string}`;
 const EVM_NETWORK = process.env.EVM_NETWORK || "eip155:84532";
 const SVM_NETWORK = process.env.SVM_NETWORK || "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
 const APTOS_NETWORK = process.env.APTOS_NETWORK || "aptos:2";
@@ -64,6 +70,7 @@ function getEvmChain(network: string): Chain {
   }
 }
 
+console.log(`🌐 AVM Network: ${AVM_NETWORK}`);
 console.log(`🌐 EVM Network: ${EVM_NETWORK}`);
 console.log(`🌐 SVM Network: ${SVM_NETWORK}`);
 console.log(`🌐 Aptos Network: ${APTOS_NETWORK}`);
@@ -90,6 +97,60 @@ console.info(`EVM Facilitator account: ${evmAccount.address}`);
 // Initialize the SVM account from private key
 const svmAccount = await createKeyPairSignerFromBytes(base58.decode(process.env.SVM_PRIVATE_KEY as string));
 console.info(`SVM Facilitator account: ${svmAccount.address}`);
+
+// Initialize the AVM account from private key if provided
+let avmSigner: {
+  getAddresses: () => readonly string[];
+  signTransaction: (txn: Uint8Array, senderAddress: string) => Promise<Uint8Array>;
+  getAlgodClient: (network: string) => algosdk.Algodv2;
+  simulateTransactions: (txns: Uint8Array[], network: string) => Promise<unknown>;
+  sendTransactions: (signedTxns: Uint8Array[], network: string) => Promise<string>;
+  waitForConfirmation: (txId: string, network: string, waitRounds?: number) => Promise<unknown>;
+} | undefined;
+
+if (process.env.AVM_PRIVATE_KEY) {
+  const avmSecretKey = Buffer.from(process.env.AVM_PRIVATE_KEY, "base64");
+  if (avmSecretKey.length !== 64) {
+    console.error("❌ AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)");
+    process.exit(1);
+  }
+  const avmAddress = algosdk.encodeAddress(avmSecretKey.slice(32));
+  const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
+  console.info(`AVM Facilitator account: ${avmAddress}`);
+
+  avmSigner = {
+    getAddresses: () => [avmAddress] as readonly string[],
+
+    signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
+      const decoded = algosdk.decodeUnsignedTransaction(txn);
+      const signed = algosdk.signTransaction(decoded, avmSecretKey);
+      return signed.blob;
+    },
+
+    getAlgodClient: (_network: string) => algodClient,
+
+    simulateTransactions: async (txns: Uint8Array[], _network: string) => {
+      const request = new algosdk.modelsv2.SimulateRequest({
+        txnGroups: [
+          new algosdk.modelsv2.SimulateRequestTransactionGroup({
+            txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
+          }),
+        ],
+        allowUnnamedResources: true,
+      });
+      return await algodClient.simulateTransactions(request).do();
+    },
+
+    sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
+      const response = await algodClient.sendRawTransaction(signedTxns).do();
+      return response.txid;
+    },
+
+    waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
+      return await algosdk.waitForConfirmation(algodClient, txId, waitRounds);
+    },
+  };
+}
 
 // Initialize the Aptos account from private key (format to AIP-80 compliant format) if provided
 let aptosAccount: Account | undefined;
@@ -166,6 +227,13 @@ function createPaymentHash(paymentPayload: PaymentPayload): string {
 }
 
 const facilitator = new x402Facilitator();
+
+// Register AVM schemes (v2 + v1) if configured
+if (avmSigner) {
+  facilitator
+    .register(AVM_NETWORK as Network, new ExactAvmScheme(avmSigner))
+    .registerV1(AVM_V1_NETWORKS as Network[], new ExactAvmSchemeV1(avmSigner));
+}
 
 // Register EVM, SVM, and Aptos schemes (v2 + v1)
 facilitator
@@ -359,6 +427,7 @@ app.get("/discovery/resources", (req, res) => {
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
+    avmNetwork: avmSigner ? AVM_NETWORK : "(not configured)",
     evmNetwork: EVM_NETWORK,
     svmNetwork: SVM_NETWORK,
     aptosNetwork: aptosAccount ? APTOS_NETWORK : "(not configured)",
@@ -390,9 +459,11 @@ app.listen(parseInt(PORT), () => {
 ║           x402 TypeScript Facilitator                  ║
 ╠════════════════════════════════════════════════════════╣
 ║  Server:       http://localhost:${PORT}                ║
+║  AVM Network:  ${AVM_NETWORK}                          ║
 ║  EVM Network:  ${EVM_NETWORK}                          ║
 ║  SVM Network:  ${SVM_NETWORK}                          ║
 ║  Aptos Network: ${APTOS_NETWORK}                       ║
+║  AVM Address:  ${avmSigner ? avmSigner.getAddresses()[0] : "(not configured)"}
 ║  EVM Address:  ${evmAccount.address}                   ║
 ║  Aptos Address: ${aptosAccount ? aptosAccount.accountAddress.toStringLong().slice(0, 20) + "..." : "(not configured)"}
 ║  Extensions:   bazaar                                  ║

@@ -243,7 +243,8 @@ export function AvmPaywall({
           try {
             const body = await response.json();
             if (body.error) {
-              errorDetail = typeof body.error === "string" ? body.error : JSON.stringify(body.error);
+              errorDetail =
+                typeof body.error === "string" ? body.error : JSON.stringify(body.error);
             } else if (body.details) {
               errorDetail = body.details;
             }
@@ -259,7 +260,7 @@ export function AvmPaywall({
         console.error("Payment error details:", {
           status: response.status,
           errorDetail,
-          paymentRequiredHeader: paymentRequiredHeader ? "present" : "absent"
+          paymentRequiredHeader: paymentRequiredHeader ? "present" : "absent",
         });
 
         throw new Error(errorMessage);
@@ -378,8 +379,8 @@ export function AvmPaywall({
 
         {wallets.length === 0 && (
           <div className="status">
-            Install an Algorand wallet such as Pera, Defly, or Lute to continue, then refresh
-            this page.
+            Install an Algorand wallet such as Pera, Defly, or Lute to continue, then refresh this
+            page.
           </div>
         )}
 

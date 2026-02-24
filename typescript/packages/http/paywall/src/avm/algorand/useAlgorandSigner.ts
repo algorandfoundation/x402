@@ -18,10 +18,7 @@ type Params = {
  * @param params.activeAccount - Account inside the wallet authorised for signing.
  * @returns A transaction signer or null when the wallet cannot sign.
  */
-export function useAlgorandSigner({
-  activeWallet,
-  activeAccount,
-}: Params): ClientAvmSigner | null {
+export function useAlgorandSigner({ activeWallet, activeAccount }: Params): ClientAvmSigner | null {
   return useMemo(() => {
     if (!activeWallet || !activeAccount) {
       return null;

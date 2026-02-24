@@ -1,1 +1,1 @@
-export { ExactAvmSchemeV1 } from "./scheme";
+export { ExactAvmSchemeV1 } from './scheme'

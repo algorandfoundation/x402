@@ -103,7 +103,9 @@ async function createFacilitator(): Promise<x402Facilitator> {
   // Initialize the AVM account from private key
   const secretKey = Buffer.from(avmPrivateKey, "base64");
   if (secretKey.length !== 64) {
-    throw new Error("FACILITATOR_AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)");
+    throw new Error(
+      "FACILITATOR_AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)",
+    );
   }
   const avmAddress = algosdk.encodeAddress(secretKey.slice(32));
   const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
@@ -112,15 +114,15 @@ async function createFacilitator(): Promise<x402Facilitator> {
   const avmSigner = {
     getAddresses: () => [avmAddress] as readonly string[],
 
-    signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
+    signTransaction: async (txn: Uint8Array, _: string) => {
       const decoded = algosdk.decodeUnsignedTransaction(txn);
       const signed = algosdk.signTransaction(decoded, secretKey);
       return signed.blob;
     },
 
-    getAlgodClient: (_network: string) => algodClient,
+    getAlgodClient: (_: string) => algodClient,
 
-    simulateTransactions: async (txns: Uint8Array[], _network: string) => {
+    simulateTransactions: async (txns: Uint8Array[], _: string) => {
       const request = new algosdk.modelsv2.SimulateRequest({
         txnGroups: [
           new algosdk.modelsv2.SimulateRequestTransactionGroup({
@@ -132,7 +134,7 @@ async function createFacilitator(): Promise<x402Facilitator> {
       return await algodClient.simulateTransactions(request).do();
     },
 
-    sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
+    sendTransactions: async (signedTxns: Uint8Array[], _: string) => {
       const response = await algodClient.sendRawTransaction(signedTxns).do();
       return response.txid;
     },
@@ -148,7 +150,10 @@ async function createFacilitator(): Promise<x402Facilitator> {
     .registerV1("base-sepolia" as Network, new ExactEvmSchemeV1(evmSigner))
     .register("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", new ExactSvmScheme(svmSigner))
     .registerV1("solana-devnet" as Network, new ExactSvmSchemeV1(svmSigner))
-    .register("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", new ExactAvmScheme(avmSigner))
+    .register(
+      "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
+      new ExactAvmScheme(avmSigner),
+    )
     .registerV1("algorand-testnet" as Network, new ExactAvmSchemeV1(avmSigner));
 
   // Optionally register Aptos if configured

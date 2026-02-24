@@ -234,19 +234,23 @@ async function runTest() {
   log('===============================');
 
   // Load configuration from environment
+  const serverAvmAddress = process.env.SERVER_AVM_ADDRESS;
   const serverEvmAddress = process.env.SERVER_EVM_ADDRESS;
   const serverSvmAddress = process.env.SERVER_SVM_ADDRESS;
   const serverAptosAddress = process.env.SERVER_APTOS_ADDRESS;
+  const clientAvmPrivateKey = process.env.CLIENT_AVM_PRIVATE_KEY;
   const clientEvmPrivateKey = process.env.CLIENT_EVM_PRIVATE_KEY;
   const clientSvmPrivateKey = process.env.CLIENT_SVM_PRIVATE_KEY;
   const clientAptosPrivateKey = process.env.CLIENT_APTOS_PRIVATE_KEY;
+  const facilitatorAvmPrivateKey = process.env.FACILITATOR_AVM_PRIVATE_KEY;
   const facilitatorEvmPrivateKey = process.env.FACILITATOR_EVM_PRIVATE_KEY;
   const facilitatorSvmPrivateKey = process.env.FACILITATOR_SVM_PRIVATE_KEY;
   const facilitatorAptosPrivateKey = process.env.FACILITATOR_APTOS_PRIVATE_KEY;
 
   if (!serverEvmAddress || !serverSvmAddress || !clientEvmPrivateKey || !clientSvmPrivateKey || !facilitatorEvmPrivateKey || !facilitatorSvmPrivateKey) {
     errorLog('❌ Missing required environment variables:');
-    errorLog(' SERVER_EVM_ADDRESS, SERVER_SVM_ADDRESS, CLIENT_EVM_PRIVATE_KEY, CLIENT_SVM_PRIVATE_KEY, FACILITATOR_EVM_PRIVATE_KEY, and FACILITATOR_SVM_PRIVATE_KEY must be set');
+    errorLog(' SERVER_EVM_ADDRESS, SERVER_SVM_ADDRESS, CLIENT_EVM_PRIVATE_KEY, CLIENT_SVM_PRIVATE_KEY, FACILITATOR_EVM_PRIVATE_KEY, and FACILITATOR_SVM_PRIVATE_KEY must be set.');
+    errorLog(' For AVM support, also set: SERVER_AVM_ADDRESS, CLIENT_AVM_PRIVATE_KEY, FACILITATOR_AVM_PRIVATE_KEY');
     process.exit(1);
   }
 
@@ -317,6 +321,7 @@ async function runTest() {
   const networks = getNetworkSet(networkMode);
 
   log(`\n🌐 Network Mode: ${networkMode.toUpperCase()}`);
+  log(`   AVM: ${networks.avm.name} (${networks.avm.caip2})`);
   log(`   EVM: ${networks.evm.name} (${networks.evm.caip2})`);
   log(`   SVM: ${networks.svm.name} (${networks.svm.caip2})`);
   log(`   APTOS: ${networks.aptos.name} (${networks.aptos.caip2})`);
@@ -396,7 +401,7 @@ async function runTest() {
   const missingEnvVars: { facilitatorName: string; missingVars: string[] }[] = [];
 
   // Environment variables managed by the test framework (don't require user to set)
-  const systemManagedVars = new Set(['PORT', 'EVM_PRIVATE_KEY', 'SVM_PRIVATE_KEY', 'APTOS_PRIVATE_KEY', 'EVM_NETWORK', 'SVM_NETWORK', 'APTOS_NETWORK', 'EVM_RPC_URL', 'SVM_RPC_URL', 'APTOS_RPC_URL']);
+  const systemManagedVars = new Set(['PORT', 'AVM_PRIVATE_KEY', 'AVM_NETWORK', 'AVM_RPC_URL', 'EVM_PRIVATE_KEY', 'SVM_PRIVATE_KEY', 'APTOS_PRIVATE_KEY', 'EVM_NETWORK', 'SVM_NETWORK', 'APTOS_NETWORK', 'EVM_RPC_URL', 'SVM_RPC_URL', 'APTOS_RPC_URL']);
 
   for (const [facilitatorName, facilitator] of uniqueFacilitators) {
     const requiredVars = facilitator.config.environment?.required || [];
@@ -548,6 +553,7 @@ async function runTest() {
     const testName = `${scenario.client.name} → ${scenario.server.name} → ${scenario.endpoint.path}${facilitatorLabel}`;
 
     const clientConfig: ClientConfig = {
+      avmPrivateKey: clientAvmPrivateKey || '',
       evmPrivateKey: clientEvmPrivateKey!,
       svmPrivateKey: clientSvmPrivateKey!,
       aptosPrivateKey: clientAptosPrivateKey || '',
@@ -629,10 +635,12 @@ async function runTest() {
     cLog.log(`🚀 Starting server: ${serverName} (port ${port}) with facilitator: ${facilitatorName || 'none'}`);
 
     const facilitatorConfig = facilitatorName ? uniqueFacilitators.get(facilitatorName)?.config : undefined;
+    const facilitatorSupportsAvm = facilitatorConfig?.protocolFamilies?.includes('avm') ?? false;
     const facilitatorSupportsAptos = facilitatorConfig?.protocolFamilies?.includes('aptos') ?? false;
 
     const serverConfig: ServerConfig = {
       port,
+      avmPayTo: facilitatorSupportsAvm ? (serverAvmAddress || '') : '',
       evmPayTo: serverEvmAddress!,
       svmPayTo: serverSvmAddress!,
       aptosPayTo: facilitatorSupportsAptos ? (serverAptosAddress || '') : '',

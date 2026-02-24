@@ -5,20 +5,23 @@
  * optional chain configuration via environment variables.
  *
  * New chain support should be added here in alphabetic order by network prefix
- * (e.g., "eip155" before "solana").
+ * (e.g., "algorand" before "eip155" before "solana").
  */
 
 import { config } from "dotenv";
 import { x402Client, wrapFetchWithPayment, x402HTTPClient } from "@x402/fetch";
+import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
-import { privateKeyToAccount } from "viem/accounts";
-import { createKeyPairSignerFromBytes } from "@solana/kit";
+import algosdk from "algosdk";
 import { base58 } from "@scure/base";
+import { createKeyPairSignerFromBytes } from "@solana/kit";
+import { privateKeyToAccount } from "viem/accounts";
 
 config();
 
 // Configuration - optional per network
+const avmPrivateKey = process.env.AVM_PRIVATE_KEY as string | undefined;
 const evmPrivateKey = process.env.EVM_PRIVATE_KEY as `0x${string}` | undefined;
 const svmPrivateKey = process.env.SVM_PRIVATE_KEY as string | undefined;
 const baseURL = process.env.RESOURCE_SERVER_URL || "http://localhost:4021";
@@ -31,13 +34,32 @@ const url = `${baseURL}${endpointPath}`;
  */
 async function main(): Promise<void> {
   // Validate at least one private key is provided
-  if (!evmPrivateKey && !svmPrivateKey) {
-    console.error("❌ At least one of EVM_PRIVATE_KEY or SVM_PRIVATE_KEY is required");
+  if (!avmPrivateKey && !evmPrivateKey && !svmPrivateKey) {
+    console.error("❌ At least one of AVM_PRIVATE_KEY, EVM_PRIVATE_KEY, or SVM_PRIVATE_KEY is required");
     process.exit(1);
   }
 
   // Create x402 client
   const client = new x402Client();
+
+  // Register AVM scheme if private key is provided
+  if (avmPrivateKey) {
+    const avmSecretKey = Buffer.from(avmPrivateKey, "base64");
+    const avmAddress = algosdk.encodeAddress(avmSecretKey.slice(32));
+    const avmSigner = {
+      address: avmAddress,
+      signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+        return txns.map((txn, i) => {
+          if (indexesToSign && !indexesToSign.includes(i)) return null;
+          const decoded = algosdk.decodeUnsignedTransaction(txn);
+          const signed = algosdk.signTransaction(decoded, avmSecretKey);
+          return signed.blob;
+        });
+      },
+    };
+    client.register("algorand:*", new ExactAvmScheme(avmSigner));
+    console.log(`Initialized AVM account: ${avmAddress}`);
+  }
 
   // Register EVM scheme if private key is provided
   if (evmPrivateKey) {

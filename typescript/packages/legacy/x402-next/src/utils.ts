@@ -228,7 +228,10 @@ export function handleMissingPaymentHeader(
             typeof getPaywallHtml
           >[0]["paymentRequirements"],
           currentUrl: request.url,
-          testnet: network === "base-sepolia" || network === "algorand-testnet" || network === "solana-devnet",
+          testnet:
+            network === "base-sepolia" ||
+            network === "algorand-testnet" ||
+            network === "solana-devnet",
           cdpClientKey: paywall?.cdpClientKey,
           appLogo: paywall?.appLogo,
           appName: paywall?.appName,

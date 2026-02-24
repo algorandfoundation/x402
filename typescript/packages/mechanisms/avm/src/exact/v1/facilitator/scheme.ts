@@ -4,7 +4,7 @@
  * Provides V1 API compatibility for Algorand ASA transfer verification and settlement.
  */
 
-import algosdk from "algosdk";
+import algosdk from 'algosdk'
 import type {
   PaymentPayload,
   PaymentRequirements,
@@ -12,12 +12,12 @@ import type {
   SettleResponse,
   VerifyResponse,
   Network,
-} from "@x402/core/types";
-import type { FacilitatorAvmSigner } from "../../../signer";
-import type { ExactAvmPayloadV1 } from "../../../types";
-import { isExactAvmPayload } from "../../../types";
-import { decodeTransaction, hasSignature, v1ToCaip2 } from "../../../utils";
-import { MAX_ATOMIC_GROUP_SIZE } from "../../../constants";
+} from '@x402/core/types'
+import type { FacilitatorAvmSigner } from '../../../signer'
+import type { ExactAvmPayloadV1 } from '../../../types'
+import { isExactAvmPayload } from '../../../types'
+import { decodeTransaction, hasSignature, v1ToCaip2 } from '../../../utils'
+import { MAX_ATOMIC_GROUP_SIZE } from '../../../constants'
 
 /**
  * AVM facilitator implementation for the Exact payment scheme (V1).
@@ -25,8 +25,8 @@ import { MAX_ATOMIC_GROUP_SIZE } from "../../../constants";
  * Provides backward compatibility with V1 x402 API.
  */
 export class ExactAvmSchemeV1 implements SchemeNetworkFacilitator {
-  readonly scheme = "exact";
-  readonly caipFamily = "algorand:*";
+  readonly scheme = 'exact'
+  readonly caipFamily = 'algorand:*'
 
   /**
    * Creates a new ExactAvmSchemeV1 facilitator instance.
@@ -37,168 +37,182 @@ export class ExactAvmSchemeV1 implements SchemeNetworkFacilitator {
 
   /**
    * Get mechanism-specific extra data for the supported kinds endpoint.
+   *
+   * @param _ - The network identifier (unused)
+   * @returns Extra data with feePayer address
    */
   getExtra(_: string): Record<string, unknown> | undefined {
-    const addresses = this.signer.getAddresses();
+    const addresses = this.signer.getAddresses()
     if (addresses.length === 0) {
-      return undefined;
+      return undefined
     }
-    const randomIndex = Math.floor(Math.random() * addresses.length);
-    return { feePayer: addresses[randomIndex] };
+    const randomIndex = Math.floor(Math.random() * addresses.length)
+    return { feePayer: addresses[randomIndex] }
   }
 
   /**
    * Get signer addresses used by this facilitator.
+   *
+   * @param _ - The network identifier (unused)
+   * @returns Array of facilitator wallet addresses
    */
   getSigners(_: string): string[] {
-    return [...this.signer.getAddresses()];
+    return [...this.signer.getAddresses()]
   }
 
   /**
    * Verifies a V1 payment payload.
+   *
+   * @param payload - The payment payload to verify
+   * @param requirements - The payment requirements
+   * @returns Promise resolving to verification response
    */
   async verify(
     payload: PaymentPayload,
     requirements: PaymentRequirements,
   ): Promise<VerifyResponse> {
-    const rawPayload = payload.payload as unknown;
+    const rawPayload = payload.payload as unknown
 
     if (!isExactAvmPayload(rawPayload)) {
       return {
         isValid: false,
-        invalidReason: "Invalid payload format",
-      };
+        invalidReason: 'Invalid payload format',
+      }
     }
 
-    const avmPayload = rawPayload as ExactAvmPayloadV1;
-    const { paymentGroup, paymentIndex } = avmPayload;
+    const avmPayload = rawPayload as ExactAvmPayloadV1
+    const { paymentGroup, paymentIndex } = avmPayload
 
     if (paymentGroup.length > MAX_ATOMIC_GROUP_SIZE) {
       return {
         isValid: false,
-        invalidReason: "Transaction group exceeds maximum size",
-      };
+        invalidReason: 'Transaction group exceeds maximum size',
+      }
     }
 
     if (paymentIndex < 0 || paymentIndex >= paymentGroup.length) {
       return {
         isValid: false,
-        invalidReason: "Payment index out of bounds",
-      };
+        invalidReason: 'Payment index out of bounds',
+      }
     }
 
     // Decode payment transaction
-    let paymentTxn: algosdk.SignedTransaction;
+    let paymentTxn: algosdk.SignedTransaction
     try {
-      const txnBytes = decodeTransaction(paymentGroup[paymentIndex]);
-      paymentTxn = algosdk.decodeSignedTransaction(txnBytes);
+      const txnBytes = decodeTransaction(paymentGroup[paymentIndex])
+      paymentTxn = algosdk.decodeSignedTransaction(txnBytes)
     } catch (error) {
       return {
         isValid: false,
-        invalidReason: `Invalid transaction encoding: ${error instanceof Error ? error.message : "Unknown error"}`,
-      };
+        invalidReason: `Invalid transaction encoding: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      }
     }
 
-    const txn = paymentTxn.txn;
+    const txn = paymentTxn.txn
 
     // Verify it's an asset transfer
-    if (txn.type !== "axfer") {
+    if (txn.type !== 'axfer') {
       return {
         isValid: false,
-        invalidReason: "Payment transaction is not an asset transfer",
-      };
+        invalidReason: 'Payment transaction is not an asset transfer',
+      }
     }
 
     // Verify amount (V1 uses maxAmountRequired)
-    const assetAmount = (txn as unknown as { assetAmount?: bigint }).assetAmount ?? BigInt(0);
-    const amount = assetAmount.toString();
-    const requiredAmount = (requirements as { maxAmountRequired?: string }).maxAmountRequired ?? requirements.amount;
+    const assetAmount = (txn as unknown as { assetAmount?: bigint }).assetAmount ?? BigInt(0)
+    const amount = assetAmount.toString()
+    const requiredAmount =
+      (requirements as { maxAmountRequired?: string }).maxAmountRequired ?? requirements.amount
     if (amount !== requiredAmount) {
       return {
         isValid: false,
         invalidReason: `Amount mismatch: expected ${requiredAmount}, got ${amount}`,
-      };
+      }
     }
 
     // Verify receiver
-    const assetReceiver = (txn as unknown as { assetReceiver?: { publicKey: Uint8Array } }).assetReceiver;
-    const receiver = assetReceiver
-      ? algosdk.encodeAddress(assetReceiver.publicKey)
-      : "";
+    const assetReceiver = (txn as unknown as { assetReceiver?: { publicKey: Uint8Array } })
+      .assetReceiver
+    const receiver = assetReceiver ? algosdk.encodeAddress(assetReceiver.publicKey) : ''
     if (receiver !== requirements.payTo) {
       return {
         isValid: false,
         invalidReason: `Receiver mismatch: expected ${requirements.payTo}, got ${receiver}`,
-      };
+      }
     }
 
     // Verify asset
-    const assetIndex = (txn as unknown as { assetIndex?: bigint }).assetIndex;
-    const assetId = assetIndex?.toString() ?? "";
+    const assetIndex = (txn as unknown as { assetIndex?: bigint }).assetIndex
+    const assetId = assetIndex?.toString() ?? ''
     if (assetId !== requirements.asset) {
       return {
         isValid: false,
         invalidReason: `Asset mismatch: expected ${requirements.asset}, got ${assetId}`,
-      };
+      }
     }
 
     // Verify signature
-    const txnBytes = decodeTransaction(paymentGroup[paymentIndex]);
+    const txnBytes = decodeTransaction(paymentGroup[paymentIndex])
     if (!hasSignature(txnBytes)) {
       return {
         isValid: false,
-        invalidReason: "Payment transaction is not signed",
-      };
+        invalidReason: 'Payment transaction is not signed',
+      }
     }
 
-    return { isValid: true };
+    return { isValid: true }
   }
 
   /**
    * Settles a V1 payment.
+   *
+   * @param payload - The payment payload to settle
+   * @param requirements - The payment requirements
+   * @returns Promise resolving to settlement response
    */
   async settle(
     payload: PaymentPayload,
     requirements: PaymentRequirements,
   ): Promise<SettleResponse> {
-    const verification = await this.verify(payload, requirements);
+    const verification = await this.verify(payload, requirements)
     if (!verification.isValid) {
       return {
         success: false,
         errorReason: verification.invalidReason,
-        transaction: "",
+        transaction: '',
         network: requirements.network,
-      };
+      }
     }
 
-    const avmPayload = payload.payload as unknown as ExactAvmPayloadV1;
-    const { paymentGroup, paymentIndex } = avmPayload;
+    const avmPayload = payload.payload as unknown as ExactAvmPayloadV1
+    const { paymentGroup, paymentIndex } = avmPayload
 
     // Convert V1 network to CAIP-2
-    const caip2Network = v1ToCaip2(requirements.network as string) as Network;
+    const caip2Network = v1ToCaip2(requirements.network as string) as Network
 
     // Decode signed transactions
-    const signedTxns = paymentGroup.map(encoded => decodeTransaction(encoded));
+    const signedTxns = paymentGroup.map(encoded => decodeTransaction(encoded))
 
     try {
-      await this.signer.sendTransactions(signedTxns, caip2Network);
+      await this.signer.sendTransactions(signedTxns, caip2Network)
 
       // Get payment transaction ID
-      const paymentStxn = algosdk.decodeSignedTransaction(signedTxns[paymentIndex]);
-      const paymentTxId = paymentStxn.txn.txID();
+      const paymentStxn = algosdk.decodeSignedTransaction(signedTxns[paymentIndex])
+      const paymentTxId = paymentStxn.txn.txID()
 
       return {
         success: true,
         transaction: paymentTxId,
         network: requirements.network,
-      };
+      }
     } catch (error) {
       return {
         success: false,
-        errorReason: `Failed to submit transaction: ${error instanceof Error ? error.message : "Unknown error"}`,
-        transaction: "",
+        errorReason: `Failed to submit transaction: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        transaction: '',
         network: requirements.network,
-      };
+      }
     }
   }
 }

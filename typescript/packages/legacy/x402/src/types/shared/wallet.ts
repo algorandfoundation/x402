@@ -1,7 +1,12 @@
 import * as evm from "./evm/wallet";
 import * as svm from "../../shared/svm/wallet";
 import * as avm from "../../shared/avm/wallet";
-import { SupportedEVMNetworks, SupportedSVMNetworks, SupportedAVMNetworks } from "./network";
+import {
+  SupportedEVMNetworks,
+  SupportedSVMNetworks,
+  SupportedAVMNetworks,
+  type Network,
+} from "./network";
 import { Hex } from "viem";
 import { WalletAccount as AvmWalletAccount } from "../../schemes/exact/avm/types";
 
@@ -48,7 +53,7 @@ export function createSigner(network: string, privateKey: Hex | string): Promise
 
   // avm (Algorand) - expects mnemonic as privateKey
   if (SupportedAVMNetworks.find(n => n === network)) {
-    return Promise.resolve(avm.createSigner(network as any, privateKey as string));
+    return Promise.resolve(avm.createSigner(network as Network, privateKey as string));
   }
 
   throw new Error(`Unsupported network: ${network}`);

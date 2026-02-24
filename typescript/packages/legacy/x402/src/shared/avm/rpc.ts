@@ -17,6 +17,10 @@ export const NetworkToAlgodUrl: Record<string, string> = {
 
 /**
  * Creates an Algod client for the specified network
+ *
+ * @param network - The Algorand network to connect to
+ * @param customUrl - Optional custom Algod endpoint URL
+ * @returns An Algodv2 client instance
  */
 export function createAlgodClient(network: Network, customUrl?: string): algosdk.Algodv2 {
   if (!SupportedAVMNetworks.includes(network)) {
@@ -37,6 +41,9 @@ export const USDC_ASA_IDS: Record<string, string> = {
 
 /**
  * Gets the USDC ASA ID for the network
+ *
+ * @param network - The Algorand network
+ * @returns The USDC ASA ID string for the network
  */
 export function getUsdcAsaId(network: Network): string {
   return USDC_ASA_IDS[network] ?? USDC_ASA_IDS["algorand-testnet"];

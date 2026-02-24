@@ -1,9 +1,5 @@
 import algosdk from "algosdk";
-import {
-  PaymentPayload,
-  PaymentRequirements,
-  VerifyResponse,
-} from "../../../../types/verify";
+import { PaymentPayload, PaymentRequirements, VerifyResponse } from "../../../../types/verify";
 import { AlgorandClient, ExactAvmPayload } from "../types";
 
 /**

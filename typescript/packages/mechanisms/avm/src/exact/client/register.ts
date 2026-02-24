@@ -4,12 +4,12 @@
  * Registers AVM exact payment schemes to an x402Client instance.
  */
 
-import { x402Client, SelectPaymentRequirements, PaymentPolicy } from "@x402/core/client";
-import type { Network } from "@x402/core/types";
-import type { ClientAvmSigner, ClientAvmConfig } from "../../signer";
-import { ExactAvmScheme } from "./scheme";
-import { ExactAvmSchemeV1 } from "../v1/client/scheme";
-import { NETWORKS } from "../../v1";
+import { x402Client, SelectPaymentRequirements, PaymentPolicy } from '@x402/core/client'
+import type { Network } from '@x402/core/types'
+import type { ClientAvmSigner, ClientAvmConfig } from '../../signer'
+import { ExactAvmScheme } from './scheme'
+import { ExactAvmSchemeV1 } from '../v1/client/scheme'
+import { NETWORKS } from '../../v1'
 
 /**
  * Configuration options for registering AVM schemes to an x402Client
@@ -18,29 +18,29 @@ export interface AvmClientConfig {
   /**
    * The AVM signer to use for creating payment payloads
    */
-  signer: ClientAvmSigner;
+  signer: ClientAvmSigner
 
   /**
    * Optional configuration for Algod client
    */
-  algodConfig?: ClientAvmConfig;
+  algodConfig?: ClientAvmConfig
 
   /**
    * Optional payment requirements selector function
    * If not provided, uses the default selector (first available option)
    */
-  paymentRequirementsSelector?: SelectPaymentRequirements;
+  paymentRequirementsSelector?: SelectPaymentRequirements
 
   /**
    * Optional policies to apply to the client
    */
-  policies?: PaymentPolicy[];
+  policies?: PaymentPolicy[]
 
   /**
    * Optional specific networks to register
    * If not provided, registers wildcard support (algorand:*)
    */
-  networks?: Network[];
+  networks?: Network[]
 }
 
 /**
@@ -64,35 +64,32 @@ export interface AvmClientConfig {
  * registerExactAvmScheme(client, { signer });
  * ```
  */
-export function registerExactAvmScheme(
-  client: x402Client,
-  config: AvmClientConfig,
-): x402Client {
-  const scheme = new ExactAvmScheme(config.signer, config.algodConfig);
+export function registerExactAvmScheme(client: x402Client, config: AvmClientConfig): x402Client {
+  const scheme = new ExactAvmScheme(config.signer, config.algodConfig)
 
   // Register V2 scheme
   if (config.networks && config.networks.length > 0) {
     // Register specific networks
     config.networks.forEach(network => {
-      client.register(network, scheme);
-    });
+      client.register(network, scheme)
+    })
   } else {
     // Register wildcard for all Algorand networks
-    client.register("algorand:*", scheme);
+    client.register('algorand:*', scheme)
   }
 
   // Register all V1 networks
-  const v1Scheme = new ExactAvmSchemeV1(config.signer, config.algodConfig);
+  const v1Scheme = new ExactAvmSchemeV1(config.signer, config.algodConfig)
   NETWORKS.forEach(network => {
-    client.registerV1(network as Network, v1Scheme);
-  });
+    client.registerV1(network as Network, v1Scheme)
+  })
 
   // Apply policies if provided
   if (config.policies) {
     config.policies.forEach(policy => {
-      client.registerPolicy(policy);
-    });
+      client.registerPolicy(policy)
+    })
   }
 
-  return client;
+  return client
 }

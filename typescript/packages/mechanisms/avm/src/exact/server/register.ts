@@ -4,9 +4,9 @@
  * Registers AVM exact payment schemes to an x402ResourceServer instance.
  */
 
-import { x402ResourceServer } from "@x402/core/server";
-import type { Network } from "@x402/core/types";
-import { ExactAvmScheme } from "./scheme";
+import { x402ResourceServer } from '@x402/core/server'
+import type { Network } from '@x402/core/types'
+import { ExactAvmScheme } from './scheme'
 
 /**
  * Configuration options for registering AVM schemes to an x402ResourceServer
@@ -16,7 +16,7 @@ export interface AvmResourceServerConfig {
    * Optional specific networks to register
    * If not provided, registers wildcard support (algorand:*)
    */
-  networks?: Network[];
+  networks?: Network[]
 }
 
 /**
@@ -42,18 +42,18 @@ export function registerExactAvmScheme(
   server: x402ResourceServer,
   config: AvmResourceServerConfig = {},
 ): x402ResourceServer {
-  const scheme = new ExactAvmScheme();
+  const scheme = new ExactAvmScheme()
 
   // Register V2 scheme
   if (config.networks && config.networks.length > 0) {
     // Register specific networks
     config.networks.forEach(network => {
-      server.register(network, scheme);
-    });
+      server.register(network, scheme)
+    })
   } else {
     // Register wildcard for all Algorand networks
-    server.register("algorand:*", scheme);
+    server.register('algorand:*', scheme)
   }
 
-  return server;
+  return server
 }
