@@ -1,6 +1,8 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { x402Client } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { ExactAvmScheme } from "@x402/avm/exact/client";
+import algosdk from "algosdk";
 
 /**
  * Hooks Example
@@ -20,13 +22,35 @@ import { ExactEvmScheme } from "@x402/evm/exact/client";
  * @param evmPrivateKey - The EVM private key for signing
  * @param url - The URL to make the request to
  */
-export async function runHooksExample(evmPrivateKey: `0x${string}`, url: string): Promise<void> {
+export async function runHooksExample(
+  evmPrivateKey: `0x${string}`,
+  avmPrivateKey: string,
+  url: string,
+): Promise<void> {
   console.log("🔧 Creating client with payment lifecycle hooks...\n");
 
   const evmSigner = privateKeyToAccount(evmPrivateKey);
 
+  const secretKey = Buffer.from(avmPrivateKey, "base64");
+  if (secretKey.length !== 64) {
+    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
+  }
+  const address = algosdk.encodeAddress(secretKey.slice(32));
+  const avmSigner = {
+    address,
+    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+      return txns.map((txn, i) => {
+        if (indexesToSign && !indexesToSign.includes(i)) return null;
+        const decoded = algosdk.decodeUnsignedTransaction(txn);
+        const signed = algosdk.signTransaction(decoded, secretKey);
+        return signed.blob;
+      });
+    },
+  };
+
   const client = new x402Client()
     .register("eip155:*", new ExactEvmScheme(evmSigner))
+    .register("algorand:*", new ExactAvmScheme(avmSigner))
     .onBeforePaymentCreation(async context => {
       console.log("🔍 [BeforePaymentCreation] Creating payment for:");
       console.log(`   Network: ${context.selectedRequirements.network}`);
