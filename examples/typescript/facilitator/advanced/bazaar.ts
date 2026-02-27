@@ -5,8 +5,8 @@
  * catalogs discovered x402 resources.
  */
 
-import { base58 } from "@scure/base";
-import { createKeyPairSignerFromBytes } from "@solana/kit";
+import { DEFAULT_ALGOD_TESTNET } from "@x402/avm";
+import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
 import { x402Facilitator } from "@x402/core/facilitator";
 import {
   PaymentPayload,
@@ -16,9 +16,20 @@ import {
 } from "@x402/core/types";
 import { toFacilitatorEvmSigner } from "@x402/evm";
 import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
+import { extractDiscoveryInfo, DiscoveryInfo } from "@x402/extensions/bazaar";
 import { toFacilitatorSvmSigner } from "@x402/svm";
 import { ExactSvmScheme } from "@x402/svm/exact/facilitator";
-import { extractDiscoveryInfo, DiscoveryInfo } from "@x402/extensions/bazaar";
+import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
+import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+import {
+  decodeTransaction,
+  bytesForSigning,
+  encodeSignedTransaction,
+} from "@algorandfoundation/algokit-utils/transact";
+import { waitForConfirmation } from "@algorandfoundation/algokit-utils/transaction";
+import { base58 } from "@scure/base";
+import { createKeyPairSignerFromBytes } from "@solana/kit";
 import dotenv from "dotenv";
 import express from "express";
 import { createWalletClient, http, publicActions } from "viem";
@@ -30,19 +41,21 @@ dotenv.config();
 // Configuration
 const PORT = process.env.PORT || "4022";
 
-// Configuration - optional per network
+// Configuration - optional per network (alphabetic order)
+const avmPrivateKey = process.env.AVM_PRIVATE_KEY as string | undefined;
 const evmPrivateKey = process.env.EVM_PRIVATE_KEY as `0x${string}` | undefined;
 const svmPrivateKey = process.env.SVM_PRIVATE_KEY as string | undefined;
 
 // Validate at least one private key is provided
-if (!evmPrivateKey && !svmPrivateKey) {
+if (!avmPrivateKey && !evmPrivateKey && !svmPrivateKey) {
   console.error(
-    "❌ At least one of EVM_PRIVATE_KEY or SVM_PRIVATE_KEY is required",
+    "❌ At least one of AVM_PRIVATE_KEY, EVM_PRIVATE_KEY, or SVM_PRIVATE_KEY is required",
   );
   process.exit(1);
 }
 
-// Network configuration
+// Network configuration (alphabetic order)
+const AVM_NETWORK = "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI="; // Algorand Testnet
 const EVM_NETWORK = "eip155:84532"; // Base Sepolia
 const SVM_NETWORK = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"; // Solana Devnet
 
@@ -124,6 +137,48 @@ const facilitator = new x402Facilitator()
   .onSettleFailure(async context => {
     console.log("Settle failure", context);
   });
+
+// Register AVM scheme if private key is provided
+if (avmPrivateKey) {
+  const avmSecretKey = Buffer.from(avmPrivateKey, "base64");
+  if (avmSecretKey.length !== 64) {
+    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)");
+  }
+  const avmSeed = avmSecretKey.slice(0, 32);
+  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(avmSeed);
+  const avmAddress = encodeAddress(ed25519Pubkey);
+  console.info(`AVM Facilitator account: ${avmAddress}`);
+
+  const algodClient = new AlgodClient({ baseUrl: DEFAULT_ALGOD_TESTNET });
+
+  const avmSigner = {
+    getAddresses: () => [avmAddress] as readonly string[],
+
+    signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
+      const decoded = decodeTransaction(txn);
+      const msg = bytesForSigning.transaction(decoded);
+      const sig = await rawEd25519Signer(msg);
+      return encodeSignedTransaction({ txn: decoded, sig });
+    },
+
+    getAlgodClient: (_network: string) => algodClient,
+
+    simulateTransactions: async (txns: Uint8Array[], _network: string) => {
+      return await algodClient.simulateRawTransactions(txns);
+    },
+
+    sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
+      const response = await algodClient.sendRawTransaction(signedTxns);
+      return response.txId;
+    },
+
+    waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
+      return await waitForConfirmation(txId, waitRounds, algodClient);
+    },
+  };
+
+  facilitator.register(AVM_NETWORK, new ExactAvmScheme(avmSigner));
+}
 
 // Register EVM scheme if private key is provided
 if (evmPrivateKey) {

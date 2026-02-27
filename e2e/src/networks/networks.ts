@@ -6,7 +6,7 @@
  */
 
 export type NetworkMode = 'testnet' | 'mainnet';
-export type ProtocolFamily = 'evm' | 'svm' | 'aptos';
+export type ProtocolFamily = 'avm' | 'evm' | 'svm' | 'aptos';
 
 export type NetworkConfig = {
   name: string;
@@ -15,6 +15,7 @@ export type NetworkConfig = {
 };
 
 export type NetworkSet = {
+  avm: NetworkConfig;
   evm: NetworkConfig;
   svm: NetworkConfig;
   aptos: NetworkConfig;
@@ -25,6 +26,11 @@ export type NetworkSet = {
  */
 const NETWORK_SETS: Record<NetworkMode, NetworkSet> = {
   testnet: {
+    avm: {
+      name: 'Algorand Testnet',
+      caip2: 'algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=',
+      rpcUrl: process.env.ALGORAND_TESTNET_RPC_URL || 'https://testnet-api.algonode.cloud',
+    },
     evm: {
       name: 'Base Sepolia',
       caip2: 'eip155:84532',
@@ -42,6 +48,11 @@ const NETWORK_SETS: Record<NetworkMode, NetworkSet> = {
     },
   },
   mainnet: {
+    avm: {
+      name: 'Algorand Mainnet',
+      caip2: 'algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=',
+      rpcUrl: process.env.ALGORAND_MAINNET_RPC_URL || 'https://mainnet-api.algonode.cloud',
+    },
     evm: {
       name: 'Base',
       caip2: 'eip155:8453',
@@ -64,7 +75,7 @@ const NETWORK_SETS: Record<NetworkMode, NetworkSet> = {
  * Get the network set for a given mode
  * 
  * @param mode - 'testnet' or 'mainnet'
- * @returns NetworkSet containing EVM, SVM, and Aptos network configs
+ * @returns NetworkSet containing AVM, EVM, SVM, and Aptos network configs
  */
 export function getNetworkSet(mode: NetworkMode): NetworkSet {
   return NETWORK_SETS[mode];
@@ -74,7 +85,7 @@ export function getNetworkSet(mode: NetworkMode): NetworkSet {
  * Get network config for a protocol family in a given mode
  * 
  * @param mode - 'testnet' or 'mainnet'
- * @param protocolFamily - 'evm', 'svm', or 'aptos'
+ * @param protocolFamily - 'avm', 'evm', 'svm', or 'aptos'
  * @returns NetworkConfig for the specified protocol
  */
 export function getNetworkForProtocol(
@@ -92,5 +103,5 @@ export function getNetworkForProtocol(
  */
 export function getNetworkModeDescription(mode: NetworkMode): string {
   const set = NETWORK_SETS[mode];
-  return `${set.evm.name} + ${set.svm.name} + ${set.aptos.name}`;
+  return `${set.avm.name} + ${set.evm.name} + ${set.svm.name} + ${set.aptos.name}`;
 }

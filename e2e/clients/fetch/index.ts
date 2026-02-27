@@ -3,6 +3,7 @@ import { wrapFetchWithPayment, decodePaymentResponseHeader } from "@x402/fetch";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
+import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactEvmSchemeV1 } from "@x402/evm/v1";
 import { toClientEvmSigner } from "@x402/evm";
@@ -12,6 +13,13 @@ import { ExactAptosScheme } from "@x402/aptos/exact/client";
 import { Account, Ed25519PrivateKey, PrivateKey, PrivateKeyVariants } from "@aptos-labs/ts-sdk";
 import { base58 } from "@scure/base";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
+import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+import {
+  decodeTransaction,
+  bytesForSigning,
+  encodeSignedTransaction,
+} from "@algorandfoundation/algokit-utils/transact";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 
 config();
@@ -39,7 +47,30 @@ if (process.env.APTOS_PRIVATE_KEY) {
   aptosAccount = Account.fromPrivateKey({ privateKey: aptosPrivateKey });
 }
 
-const client = new x402Client()
+const client = new x402Client();
+
+// Register AVM if key is provided
+if (process.env.AVM_PRIVATE_KEY) {
+  const avmSecretKey = Buffer.from(process.env.AVM_PRIVATE_KEY, "base64");
+  const seed = avmSecretKey.slice(0, 32);
+  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
+  const avmAddress = encodeAddress(ed25519Pubkey);
+  const avmSigner = {
+    address: avmAddress,
+    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+      return Promise.all(txns.map(async (txn, i) => {
+        if (indexesToSign && !indexesToSign.includes(i)) return null;
+        const decoded = decodeTransaction(txn);
+        const msg = bytesForSigning.transaction(decoded);
+        const sig = await rawEd25519Signer(msg);
+        return encodeSignedTransaction({ txn: decoded, sig });
+      }));
+    },
+  };
+  client.register("algorand:*", new ExactAvmScheme(avmSigner));
+}
+
+client
   .register("eip155:*", new ExactEvmScheme(evmSigner))
   .registerV1("base-sepolia", new ExactEvmSchemeV1(evmSigner))
   .registerV1("base", new ExactEvmSchemeV1(evmSigner))
