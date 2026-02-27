@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { WalletManager } from "@txnlab/use-wallet";
-import algosdk from "algosdk";
+import type { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
 
 import { registerExactAvmScheme } from "@x402/avm/exact/client";
 import { x402Client } from "@x402/core/client";
@@ -12,7 +12,7 @@ import { getNetworkDisplayName, ALGORAND_NETWORK_REFS } from "../paywallUtils";
 type AvmPaywallProps = {
   paymentRequired: PaymentRequired;
   walletManager: WalletManager;
-  algodClient: algosdk.Algodv2;
+  algodClient: AlgodClient;
   onSuccessfulResponse: (response: Response) => Promise<void>;
 };
 
@@ -85,7 +85,7 @@ export function AvmPaywall({
 
     setIsFetchingBalance(true);
     try {
-      const accountInfo = await algodClient.accountInformation(activeAccount.address).do();
+      const accountInfo = await algodClient.accountInformation(activeAccount.address);
       const assets = accountInfo.assets || [];
       const usdcAsset = assets.find(
         (asset: { assetId: bigint }) => Number(asset.assetId) === usdcAsaId,

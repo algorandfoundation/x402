@@ -4,7 +4,10 @@
  * Provides V1 API compatibility for Algorand ASA transfer verification and settlement.
  */
 
-import algosdk from 'algosdk'
+import {
+  decodeSignedTransaction as decodeSignedTxn,
+} from '@algorandfoundation/algokit-utils/transact'
+import type { SignedTransaction } from '@algorandfoundation/algokit-utils/transact'
 import type {
   PaymentPayload,
   PaymentRequirements,
@@ -98,10 +101,10 @@ export class ExactAvmSchemeV1 implements SchemeNetworkFacilitator {
     }
 
     // Decode payment transaction
-    let paymentTxn: algosdk.SignedTransaction
+    let paymentTxn: SignedTransaction
     try {
       const txnBytes = decodeTransaction(paymentGroup[paymentIndex])
-      paymentTxn = algosdk.decodeSignedTransaction(txnBytes)
+      paymentTxn = decodeSignedTxn(txnBytes)
     } catch (error) {
       return {
         isValid: false,
@@ -120,8 +123,8 @@ export class ExactAvmSchemeV1 implements SchemeNetworkFacilitator {
     }
 
     // Verify amount (V1 uses maxAmountRequired)
-    const assetAmount = (txn as unknown as { assetAmount?: bigint }).assetAmount ?? BigInt(0)
-    const amount = assetAmount.toString()
+    const assetTransfer = txn.assetTransfer
+    const amount = (assetTransfer?.amount ?? BigInt(0)).toString()
     const requiredAmount =
       (requirements as { maxAmountRequired?: string }).maxAmountRequired ?? requirements.amount
     if (amount !== requiredAmount) {
@@ -132,9 +135,7 @@ export class ExactAvmSchemeV1 implements SchemeNetworkFacilitator {
     }
 
     // Verify receiver
-    const assetReceiver = (txn as unknown as { assetReceiver?: { publicKey: Uint8Array } })
-      .assetReceiver
-    const receiver = assetReceiver ? algosdk.encodeAddress(assetReceiver.publicKey) : ''
+    const receiver = assetTransfer?.receiver ? assetTransfer.receiver.toString() : ''
     if (receiver !== requirements.payTo) {
       return {
         isValid: false,
@@ -143,8 +144,7 @@ export class ExactAvmSchemeV1 implements SchemeNetworkFacilitator {
     }
 
     // Verify asset
-    const assetIndex = (txn as unknown as { assetIndex?: bigint }).assetIndex
-    const assetId = assetIndex?.toString() ?? ''
+    const assetId = assetTransfer?.assetId?.toString() ?? ''
     if (assetId !== requirements.asset) {
       return {
         isValid: false,
@@ -198,8 +198,8 @@ export class ExactAvmSchemeV1 implements SchemeNetworkFacilitator {
       await this.signer.sendTransactions(signedTxns, caip2Network)
 
       // Get payment transaction ID
-      const paymentStxn = algosdk.decodeSignedTransaction(signedTxns[paymentIndex])
-      const paymentTxId = paymentStxn.txn.txID()
+      const paymentStxn = decodeSignedTxn(signedTxns[paymentIndex])
+      const paymentTxId = paymentStxn.txn.txId()
 
       return {
         success: true,

@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { WalletManager, WalletId, NetworkId } from "@txnlab/use-wallet";
-import algosdk from "algosdk";
+import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
 import { AvmPaywall } from "./AvmPaywall";
 import type {} from "../window";
 import { ALGORAND_NETWORK_REFS } from "../paywallUtils";
@@ -39,11 +39,10 @@ window.addEventListener("load", async () => {
       };
 
   // Create Algod client
-  const algodClient = new algosdk.Algodv2(
-    algodConfig.token,
-    algodConfig.baseServer,
-    algodConfig.port,
-  );
+  const algodClient = new AlgodClient({
+    baseUrl: algodConfig.baseServer,
+    token: algodConfig.token || undefined,
+  });
 
   // Initialize WalletManager with Algorand wallets
   const walletManager = new WalletManager({

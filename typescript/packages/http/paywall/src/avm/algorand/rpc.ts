@@ -1,4 +1,4 @@
-import algosdk from "algosdk";
+import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
 import { ALGORAND_NETWORK_REFS } from "../../paywallUtils";
 
 /**
@@ -17,8 +17,8 @@ const MAINNET_RPC_URL = "https://mainnet-api.algonode.cloud";
  * @param url - Optional URL of the testnet network.
  * @returns An Algod client.
  */
-export function createTestnetAlgodClient(url?: string): algosdk.Algodv2 {
-  return new algosdk.Algodv2("", url ?? TESTNET_RPC_URL, "");
+export function createTestnetAlgodClient(url?: string): AlgodClient {
+  return new AlgodClient({ baseUrl: url ?? TESTNET_RPC_URL });
 }
 
 /**
@@ -27,8 +27,8 @@ export function createTestnetAlgodClient(url?: string): algosdk.Algodv2 {
  * @param url - Optional URL of the mainnet network.
  * @returns An Algod client.
  */
-export function createMainnetAlgodClient(url?: string): algosdk.Algodv2 {
-  return new algosdk.Algodv2("", url ?? MAINNET_RPC_URL, "");
+export function createMainnetAlgodClient(url?: string): AlgodClient {
+  return new AlgodClient({ baseUrl: url ?? MAINNET_RPC_URL });
 }
 
 /**
@@ -38,7 +38,7 @@ export function createMainnetAlgodClient(url?: string): algosdk.Algodv2 {
  * @param url - Optional URL of the network. If not provided, the default URL will be used.
  * @returns The Algod client for the given network
  */
-export function getAlgodClient(network: string, url?: string): algosdk.Algodv2 {
+export function getAlgodClient(network: string, url?: string): AlgodClient {
   if (!network.startsWith("algorand:")) {
     throw new Error(
       `Invalid network format. Expected CAIP-2 format (algorand:reference), got: ${network}`,

@@ -1,4 +1,10 @@
-import algosdk from "algosdk";
+import {
+  decodeSignedTransaction as decodeSignedTxn,
+  decodeTransaction as decodeUnsignedTxn,
+  encodeSignedTransaction,
+  encodeTransactionRaw,
+} from "@algorandfoundation/algokit-utils/transact";
+import type { SignedTransaction, Transaction } from "@algorandfoundation/algokit-utils/transact";
 import { PaymentPayload, PaymentRequirements, VerifyResponse } from "../../../../types/verify";
 import { AlgorandClient, ExactAvmPayload } from "../types";
 
@@ -8,9 +14,9 @@ import { AlgorandClient, ExactAvmPayload } from "../types";
  * @param encodedTxn - The base64-encoded signed transaction string
  * @returns The decoded Algorand signed transaction
  */
-function decodeSignedTransaction(encodedTxn: string): algosdk.SignedTransaction {
+function decodeSignedTransaction(encodedTxn: string): SignedTransaction {
   const txnBytes = Buffer.from(encodedTxn, "base64");
-  const decodedSignedTxn = algosdk.decodeSignedTransaction(txnBytes);
+  const decodedSignedTxn = decodeSignedTxn(txnBytes);
   return decodedSignedTxn;
 }
 
@@ -20,9 +26,9 @@ function decodeSignedTransaction(encodedTxn: string): algosdk.SignedTransaction 
  * @param encodedTxn - The base64-encoded unsigned transaction string
  * @returns The decoded Algorand transaction
  */
-function decodeTransaction(encodedTxn: string): algosdk.Transaction {
+function decodeTransaction(encodedTxn: string): Transaction {
   const txnBytes = Buffer.from(encodedTxn, "base64");
-  return algosdk.decodeUnsignedTransaction(txnBytes);
+  return decodeUnsignedTxn(txnBytes);
 }
 
 /**
@@ -32,7 +38,7 @@ function decodeTransaction(encodedTxn: string): algosdk.Transaction {
  * @returns The current round number
  */
 async function getCurrentRound(client: AlgorandClient): Promise<number> {
-  const status = await client.client.status().do();
+  const status = await client.client.status();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const statusAny = status as any;
   const lastRound = statusAny.lastRound || statusAny["last-round"];
@@ -83,21 +89,25 @@ export async function verify(
     }
 
     // Step 2: Decode all transactions from the paymentGroup
-    const decodedTransactions: algosdk.SignedTransaction[] = [];
+    const decodedTransactions: SignedTransaction[] = [];
     for (let i = 0; i < exactAvmPayload.paymentGroup.length; i++) {
       try {
         const txnBase64 = exactAvmPayload.paymentGroup[i];
         // Try to decode as signed transaction first
         try {
           const signedTxn = decodeSignedTransaction(txnBase64);
+          // Validate the decode actually produced a valid signed transaction.
+          // algokit-utils decodeSignedTransaction is lenient and may succeed on raw unsigned
+          // bytes, returning a transaction with type "unknown" and missing fields.
+          if (!signedTxn.txn.type || signedTxn.txn.type === "unknown") {
+            throw new Error("Invalid signed transaction: missing type");
+          }
           decodedTransactions.push(signedTxn);
         } catch {
           // If not signed, try as unsigned transaction
           const txn = decodeTransaction(txnBase64);
-          const encodedUnsignedSimulateTransaction = algosdk.encodeUnsignedSimulateTransaction(txn);
-          const decodedUnsignedTxn = algosdk.decodeSignedTransaction(
-            encodedUnsignedSimulateTransaction,
-          );
+          const encodedForSimulate = encodeSignedTransaction({ txn });
+          const decodedUnsignedTxn = decodeSignedTxn(encodedForSimulate);
           decodedTransactions.push(decodedUnsignedTxn);
         }
       } catch (error) {
@@ -127,7 +137,7 @@ export async function verify(
     let amount = 0;
     let assetId: number | undefined;
 
-    if (transaction.type === algosdk.TransactionType.pay) {
+    if (transaction.type === "pay") {
       const paymentFields = transaction.payment;
       if (!paymentFields) {
         console.error("Missing payment fields in transaction");
@@ -139,7 +149,7 @@ export async function verify(
       }
       to = paymentFields.receiver.toString();
       amount = Number(paymentFields.amount ?? 0n);
-    } else if (transaction.type === algosdk.TransactionType.axfer) {
+    } else if (transaction.type === "axfer") {
       const assetFields = transaction.assetTransfer;
       if (!assetFields) {
         console.error("Missing asset transfer fields in transaction");
@@ -151,7 +161,7 @@ export async function verify(
       }
       to = assetFields.receiver.toString();
       amount = Number(assetFields.amount ?? 0n);
-      assetId = assetFields.assetIndex ? Number(assetFields.assetIndex) : undefined;
+      assetId = assetFields.assetId ? Number(assetFields.assetId) : undefined;
     } else {
       console.error("Unsupported transaction type for payment transaction:", transaction.type);
       return {
@@ -199,7 +209,7 @@ export async function verify(
         const t = "txn" in fTxn ? fTxn.txn : fTxn;
 
         // Step 4.2: Check the type is pay
-        if (t.type !== algosdk.TransactionType.pay) {
+        if (t.type !== "pay") {
           console.error("Facilitator transaction is not a payment transaction");
           return {
             isValid: false,
@@ -257,9 +267,10 @@ export async function verify(
       if (requiredAssetId !== 0) {
         try {
           // Check if recipient has opted in
-          const assetInfo = await client.client
-            .accountAssetInformation(paymentRequirements.payTo, requiredAssetId)
-            .do();
+          const assetInfo = await client.client.accountAssetInformation(
+            paymentRequirements.payTo,
+            requiredAssetId,
+          );
           if (!assetInfo.assetHolding) {
             console.error("Recipient has not opted in to the ASA");
             return {
@@ -303,14 +314,14 @@ export async function verify(
 
     // Step 6: Evaluate the payment group against simulation
     try {
-      const request = new algosdk.modelsv2.SimulateRequest({
-        txnGroups: [
-          new algosdk.modelsv2.SimulateRequestTransactionGroup({
-            txns: decodedTransactions,
-          }),
-        ],
+      // Encode all decoded transactions as signed transaction bytes for simulation
+      const txnBytesForSimulation: Uint8Array[] = decodedTransactions.map(stxn => {
+        const txn = "txn" in stxn ? stxn.txn : stxn;
+        const sig = "sig" in stxn ? stxn.sig : undefined;
+        return encodeSignedTransaction({ txn, sig });
       });
-      const simulationResult = await client.client.simulateTransactions(request).do();
+
+      const simulationResult = await client.client.simulateRawTransactions(txnBytesForSimulation);
 
       if (!simulationResult.txnGroups) {
         console.error("Transaction simulation failed:", simulationResult.txnGroups);

@@ -21,7 +21,7 @@
     "@x402/extensions": "workspace:*",
     "@x402/avm": "workspace:*",
     "@x402/svm": "workspace:*",
-    "algosdk": "^3.5.2",
+    "@algorandfoundation/algokit-utils": "10.0.0-alpha.39",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "viem": "^2.21.54"

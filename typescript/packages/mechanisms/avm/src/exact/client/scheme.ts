@@ -4,7 +4,13 @@
  * Creates atomic transaction groups for Algorand ASA transfers.
  */
 
-import algosdk from 'algosdk'
+import {
+  Transaction,
+  TransactionType,
+  encodeTransactionRaw,
+  groupTransactions,
+} from '@algorandfoundation/algokit-utils/transact'
+import { Address } from '@algorandfoundation/algokit-utils/common'
 import type {
   PaymentRequirements,
   SchemeNetworkClient,
@@ -14,6 +20,7 @@ import type { ClientAvmSigner, ClientAvmConfig } from '../../signer'
 import type { ExactAvmPayloadV2 } from '../../types'
 import { createAlgodClient, encodeTransaction } from '../../utils'
 import { USDC_CONFIG, DEFAULT_ALGOD_TESTNET } from '../../constants'
+import type { AlgodClient } from '@algorandfoundation/algokit-utils/algod-client'
 
 /**
  * AVM client implementation for the Exact payment scheme.
@@ -58,10 +65,10 @@ export class ExactAvmScheme implements SchemeNetworkClient {
         network,
         this.config?.algodUrl ?? DEFAULT_ALGOD_TESTNET,
         this.config?.algodToken,
-      )) as algosdk.Algodv2
+      )) as AlgodClient
 
     // Get suggested params
-    const suggestedParams = await algodClient.getTransactionParams().do()
+    const suggestedParams = await algodClient.suggestedParams()
 
     // Get asset ID (from requirements or default USDC)
     const assetId = this.getAssetId(asset, network)
@@ -69,7 +76,7 @@ export class ExactAvmScheme implements SchemeNetworkClient {
     // Get fee payer address from extra if provided
     const feePayer = extra?.feePayer as string | undefined
 
-    const transactions: algosdk.Transaction[] = []
+    const transactions: Transaction[] = []
     let paymentIndex = 0
 
     // Calculate total transaction count for fee pooling
@@ -80,19 +87,19 @@ export class ExactAvmScheme implements SchemeNetworkClient {
     // Build fee payer transaction if specified
     // Fee payer pays for all transactions in the group (pooled fees)
     if (feePayer) {
-      // Create params with pooled fee (minFee * number of transactions)
-      const feePayerParams = {
-        ...suggestedParams,
+      const feePayerTxn = new Transaction({
+        type: TransactionType.Payment,
+        sender: Address.fromString(feePayer),
         fee: minFee * BigInt(totalTxnCount),
-        flatFee: true,
-      }
-
-      const feePayerTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-        sender: algosdk.Address.fromString(feePayer),
-        receiver: algosdk.Address.fromString(feePayer), // Self-payment
-        amount: 0,
-        suggestedParams: feePayerParams,
+        firstValid: suggestedParams.firstValid,
+        lastValid: suggestedParams.lastValid,
+        genesisHash: suggestedParams.genesisHash,
+        genesisId: suggestedParams.genesisId,
         note: new Uint8Array(Buffer.from(`x402-fee-payer-${Date.now()}`)),
+        payment: {
+          receiver: Address.fromString(feePayer),
+          amount: BigInt(0),
+        },
       })
       transactions.push(feePayerTxn)
       paymentIndex = 1 // Payment will be second transaction
@@ -100,33 +107,39 @@ export class ExactAvmScheme implements SchemeNetworkClient {
 
     // Build ASA transfer transaction
     // When fee payer exists, set fee to 0 (fee payer covers all fees)
-    const assetTransferParams = feePayer
-      ? { ...suggestedParams, fee: BigInt(0), flatFee: true }
-      : suggestedParams
+    const assetTransferFee = feePayer ? BigInt(0) : (suggestedParams.fee ?? minFee)
 
-    const assetTransferTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-      sender: algosdk.Address.fromString(this.signer.address),
-      receiver: algosdk.Address.fromString(payTo),
-      amount: BigInt(amount),
-      assetIndex: Number(assetId),
-      suggestedParams: assetTransferParams,
+    const assetTransferTxn = new Transaction({
+      type: TransactionType.AssetTransfer,
+      sender: Address.fromString(this.signer.address),
+      fee: assetTransferFee,
+      firstValid: suggestedParams.firstValid,
+      lastValid: suggestedParams.lastValid,
+      genesisHash: suggestedParams.genesisHash,
+      genesisId: suggestedParams.genesisId,
       note: new Uint8Array(Buffer.from(`x402-payment-v${x402Version}-${Date.now()}`)),
+      assetTransfer: {
+        receiver: Address.fromString(payTo),
+        amount: BigInt(amount),
+        assetId: BigInt(assetId),
+      },
     })
     transactions.push(assetTransferTxn)
 
     // Assign group ID if multiple transactions
+    let groupedTxns = transactions
     if (transactions.length > 1) {
-      algosdk.assignGroupID(transactions)
+      groupedTxns = groupTransactions(transactions)
     }
 
     // Encode transactions
-    const encodedTxns = transactions.map(txn => txn.toByte())
+    const encodedTxns = groupedTxns.map(txn => encodeTransactionRaw(txn))
 
     // Determine which transactions the client should sign
     // Client signs all except fee payer transactions
-    const clientIndexes = transactions
+    const clientIndexes = groupedTxns
       .map((txn, i) => {
-        const sender = algosdk.encodeAddress(txn.sender.publicKey)
+        const sender = txn.sender.toString()
         return sender === this.signer.address ? i : -1
       })
       .filter(i => i !== -1)
@@ -139,7 +152,7 @@ export class ExactAvmScheme implements SchemeNetworkClient {
       assetId: this.getAssetId(asset, network),
       network,
       clientIndexes,
-      txnCount: transactions.length,
+      txnCount: groupedTxns.length,
       hasFeePayer: !!feePayer,
     })
 

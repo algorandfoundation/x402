@@ -4,7 +4,12 @@
  * Provides V1 API compatibility for Algorand ASA transfers.
  */
 
-import algosdk from 'algosdk'
+import {
+  Transaction,
+  TransactionType,
+  encodeTransactionRaw,
+} from '@algorandfoundation/algokit-utils/transact'
+import { Address } from '@algorandfoundation/algokit-utils/common'
 import type {
   Network,
   PaymentPayload,
@@ -16,6 +21,7 @@ import type { ClientAvmSigner, ClientAvmConfig } from '../../../signer'
 import type { ExactAvmPayloadV1 } from '../../../types'
 import { createAlgodClient, encodeTransaction } from '../../../utils'
 import { V1_TO_CAIP2, USDC_CONFIG, DEFAULT_ALGOD_TESTNET } from '../../../constants'
+import type { AlgodClient } from '@algorandfoundation/algokit-utils/algod-client'
 
 /**
  * AVM client implementation for the Exact payment scheme (V1).
@@ -62,26 +68,33 @@ export class ExactAvmSchemeV1 implements SchemeNetworkClient {
         caip2Network as Network,
         this.config?.algodUrl ?? DEFAULT_ALGOD_TESTNET,
         this.config?.algodToken,
-      )) as algosdk.Algodv2
+      )) as AlgodClient
 
     // Get suggested params
-    const suggestedParams = await algodClient.getTransactionParams().do()
+    const suggestedParams = await algodClient.suggestedParams()
 
     // Get asset ID
     const assetId = this.getAssetId(selectedV1.asset, caip2Network)
 
     // Build ASA transfer transaction
-    const assetTransferTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-      sender: algosdk.Address.fromString(this.signer.address),
-      receiver: algosdk.Address.fromString(selectedV1.payTo),
-      amount: BigInt(selectedV1.maxAmountRequired),
-      assetIndex: Number(assetId),
-      suggestedParams,
+    const assetTransferTxn = new Transaction({
+      type: TransactionType.AssetTransfer,
+      sender: Address.fromString(this.signer.address),
+      fee: suggestedParams.fee ?? suggestedParams.minFee ?? BigInt(1000),
+      firstValid: suggestedParams.firstValid,
+      lastValid: suggestedParams.lastValid,
+      genesisHash: suggestedParams.genesisHash,
+      genesisId: suggestedParams.genesisId,
       note: new Uint8Array(Buffer.from(`x402-payment-v${x402Version}`)),
+      assetTransfer: {
+        receiver: Address.fromString(selectedV1.payTo),
+        amount: BigInt(selectedV1.maxAmountRequired),
+        assetId: BigInt(assetId),
+      },
     })
 
     // Encode transaction
-    const encodedTxn = assetTransferTxn.toByte()
+    const encodedTxn = encodeTransactionRaw(assetTransferTxn)
 
     // Sign transaction
     const signedTxns = await this.signer.signTransactions([encodedTxn], [0])

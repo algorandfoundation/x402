@@ -1,5 +1,5 @@
 import { z } from "zod";
-import algosdk from "algosdk";
+import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
 
 /**
  * AVM (Algorand) exact scheme payload structure
@@ -35,7 +35,7 @@ export interface WalletAccount {
     indexesToSign?: number[],
   ) => Promise<(Uint8Array | null)[]>;
   /** The Algorand client instance */
-  client: algosdk.Algodv2;
+  client: AlgodClient;
 }
 
 /**
@@ -64,7 +64,7 @@ export interface WalletProvider {
  */
 export interface AlgorandClient {
   /** The Algorand client instance */
-  client: algosdk.Algodv2;
+  client: AlgodClient;
   /** The network ID */
   network: string;
 }

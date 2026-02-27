@@ -474,6 +474,9 @@ importers:
 
   packages/http/paywall:
     dependencies:
+      '@algorandfoundation/algokit-utils':
+        specifier: 10.0.0-alpha.39
+        version: 10.0.0-alpha.39
       '@blockshake/defly-connect':
         specifier: ^1.2.1
         version: 1.2.1(algosdk@3.5.2)(bufferutil@4.1.0)(utf-8-validate@5.0.10)
@@ -528,9 +531,6 @@ importers:
       '@x402/core':
         specifier: workspace:~
         version: link:../../core
-      algosdk:
-        specifier: ^3.5.0
-        version: 3.5.2
       lute-connect:
         specifier: ^1.6.3
         version: 1.7.0
@@ -622,6 +622,9 @@ importers:
 
   packages/legacy/x402:
     dependencies:
+      '@algorandfoundation/algokit-utils':
+        specifier: 10.0.0-alpha.39
+        version: 10.0.0-alpha.39
       '@scure/base':
         specifier: ^1.2.6
         version: 1.2.6
@@ -652,9 +655,6 @@ importers:
       '@wallet-standard/features':
         specifier: ^1.1.0
         version: 1.1.0
-      algosdk:
-        specifier: ^3.5.0
-        version: 3.5.2
       viem:
         specifier: ^2.21.26
         version: 2.45.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
@@ -1188,21 +1188,12 @@ importers:
 
   packages/mechanisms/avm:
     dependencies:
-      '@noble/curves':
-        specifier: ^1.8.1
-        version: 1.9.7
-      '@scure/bip32':
-        specifier: ^1.6.2
-        version: 1.7.0
-      '@scure/bip39':
-        specifier: ^1.5.4
-        version: 1.6.0
+      '@algorandfoundation/algokit-utils':
+        specifier: 10.0.0-alpha.39
+        version: 10.0.0-alpha.39
       '@x402/core':
         specifier: workspace:^
         version: link:../../core
-      algosdk:
-        specifier: ^3.5.0
-        version: 3.5.2
     devDependencies:
       '@eslint/js':
         specifier: ^9.24.0
@@ -1380,6 +1371,9 @@ importers:
 
   site:
     dependencies:
+      '@algorandfoundation/algokit-utils':
+        specifier: 10.0.0-alpha.39
+        version: 10.0.0-alpha.39
       '@aptos-labs/ts-sdk':
         specifier: ^5.2.1
         version: 5.2.1(got@11.8.6)
@@ -1419,9 +1413,6 @@ importers:
       '@x402/svm':
         specifier: workspace:*
         version: link:../packages/mechanisms/svm
-      algosdk:
-        specifier: ^3.5.2
-        version: 3.5.2
       lottie-react:
         specifier: ^2.4.1
         version: 2.4.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1506,6 +1497,13 @@ packages:
 
   '@adraffy/ens-normalize@1.11.1':
     resolution: {integrity: sha512-nhCBV3quEgesuf7c7KYfperqSS14T8bYuvJ8PcLJp6znkZpFc0AuW4qBtr8eKVyPPe/8RSr7sglCWPU5eaxwKQ==}
+
+  '@algorandfoundation/algokit-utils@10.0.0-alpha.39':
+    resolution: {integrity: sha512-nqyBdXsdgt5FIKLXMctJXFZWDgwQBfXowSacrIfLplMphRuKqWOV3AwTOB+QDvMMsCPAstf6ULmEBQLJcXlVtA==}
+    engines: {node: '>=20.0'}
+
+  '@algorandfoundation/xhd-wallet-api@2.0.0-canary.1':
+    resolution: {integrity: sha512-U6rSWMO6FKDLvMxWtfKyW5ctqSy2NrONWTU/jOA+BX0SGru0GPXsxwzFdcPa5w+X055V/xVVsr8eA3xA+m/5jA==}
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -3004,6 +3002,10 @@ packages:
     resolution: {integrity: sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw==}
     engines: {node: ^14.21.3 || >=16}
 
+  '@noble/ciphers@2.1.1':
+    resolution: {integrity: sha512-bysYuiVfhxNJuldNXlFEitTVdNnYUc+XNJZd7Qm2a5j1vZHgY+fazadNFWFaMK/2vye0JVlxV3gHmC0WDfAOQw==}
+    engines: {node: '>= 20.19.0'}
+
   '@noble/curves@1.2.0':
     resolution: {integrity: sha512-oYclrNgRaM9SsBUBVbb8M6DTV7ZHRTKugureoYEncY5c65HOmRzvSiTE3y5CYaPYJA/GVkrhXEoF0M3Ya9PMnw==}
 
@@ -3026,6 +3028,13 @@ packages:
     resolution: {integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==}
     engines: {node: ^14.21.3 || >=16}
 
+  '@noble/curves@2.0.1':
+    resolution: {integrity: sha512-vs1Az2OOTBiP4q0pwjW5aF0xp9n4MxVrmkFBxc6EKZc6ddYx5gaZiAsZoq0uRRXWbi3AT/sBqn05eRPtn1JCPw==}
+    engines: {node: '>= 20.19.0'}
+
+  '@noble/ed25519@3.0.0':
+    resolution: {integrity: sha512-QyteqMNm0GLqfa5SoYbSC3+Pvykwpn95Zgth4MFVSMKBB75ELl9tX1LAVsN4c3HXOrakHsF2gL4zWDAYCcsnzg==}
+
   '@noble/hashes@1.3.2':
     resolution: {integrity: sha512-MVC8EAQp7MvEcm30KWENFjgR+Mkmf+D189XJTkFIlwohU5hcBbn1ZkKq7KVTi2Hme3PMGF390DaL52beVrIihQ==}
     engines: {node: '>= 16'}
@@ -3045,6 +3054,10 @@ packages:
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
     engines: {node: ^14.21.3 || >=16}
+
+  '@noble/hashes@2.0.1':
+    resolution: {integrity: sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw==}
+    engines: {node: '>= 20.19.0'}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -4695,6 +4708,10 @@ packages:
   ajv@8.17.1:
     resolution: {integrity: sha512-B/gBuNg5SiMTrPkC+A2+cW0RszwxYmn6VYxB/inlBStS5nx6xHIt/ehKRhIMhqusl7a8LjQoZnjCs5vhwxOQ1g==}
 
+  algo-msgpack-with-bigint@2.1.1:
+    resolution: {integrity: sha512-F1tGh056XczEaEAqu7s+hlZUDWwOBT70Eq0lfMpBP2YguSQVyxRbprLq5rELXKQOyOaixTWYhMeMQMzP0U5FoQ==}
+    engines: {node: '>= 10'}
+
   algorand-msgpack@1.1.0:
     resolution: {integrity: sha512-08k7pBQnkaUB5p+jL7f1TRaUIlTSDE0cesFu1mD7llLao+1cAhtvvZmGE3OnisTd0xOn118QMw74SRqddqaYvw==}
     engines: {node: '>= 14'}
@@ -5335,6 +5352,10 @@ packages:
 
   dot-case@3.0.4:
     resolution: {integrity: sha512-Kv5nKlh6yRrdrGvxeJ2e5y2eRUpkUosIW4A2AS38zwSz27zu7ufDwQPi5Jhs3XAlGNetl3bmnGhQsMtkKJnj3w==}
+
+  dotenv@16.6.1:
+    resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
+    engines: {node: '>=12'}
 
   dotenv@8.6.0:
     resolution: {integrity: sha512-IrPdXQsk2BbzvCBGBOTmmSH5SodmqZNt4ERAZDmW4CT+tL8VtvinqywuANaFu4bOMWki16nqf0e4oC0QIaDr/g==}
@@ -8368,6 +8389,28 @@ snapshots:
 
   '@adraffy/ens-normalize@1.11.1': {}
 
+  '@algorandfoundation/algokit-utils@10.0.0-alpha.39':
+    dependencies:
+      '@algorandfoundation/xhd-wallet-api': 2.0.0-canary.1
+      '@noble/ed25519': 3.0.0
+      '@noble/hashes': 2.0.1
+      algorand-msgpack: 1.1.0
+      buffer: 6.0.3
+      dotenv: 16.6.1
+      hi-base32: 0.5.1
+      json-bigint: 1.0.0
+      tweetnacl: 1.0.3
+      vlq: 2.0.4
+
+  '@algorandfoundation/xhd-wallet-api@2.0.0-canary.1':
+    dependencies:
+      '@noble/ciphers': 2.1.1
+      '@noble/curves': 2.0.1
+      '@noble/hashes': 2.0.1
+      ajv: 8.17.1
+      algo-msgpack-with-bigint: 2.1.1
+      bn.js: 5.2.2
+
   '@alloc/quick-lru@5.2.0': {}
 
   '@aptos-labs/aptos-cli@1.1.1':
@@ -10304,6 +10347,8 @@ snapshots:
 
   '@noble/ciphers@1.3.0': {}
 
+  '@noble/ciphers@2.1.1': {}
+
   '@noble/curves@1.2.0':
     dependencies:
       '@noble/hashes': 1.3.2
@@ -10328,6 +10373,12 @@ snapshots:
     dependencies:
       '@noble/hashes': 1.8.0
 
+  '@noble/curves@2.0.1':
+    dependencies:
+      '@noble/hashes': 2.0.1
+
+  '@noble/ed25519@3.0.0': {}
+
   '@noble/hashes@1.3.2': {}
 
   '@noble/hashes@1.4.0': {}
@@ -10337,6 +10388,8 @@ snapshots:
   '@noble/hashes@1.7.1': {}
 
   '@noble/hashes@1.8.0': {}
+
+  '@noble/hashes@2.0.1': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -13630,6 +13683,8 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
+  algo-msgpack-with-bigint@2.1.1: {}
+
   algorand-msgpack@1.1.0: {}
 
   algosdk@3.5.2:
@@ -14273,6 +14328,8 @@ snapshots:
     dependencies:
       no-case: 3.0.4
       tslib: 2.8.1
+
+  dotenv@16.6.1: {}
 
   dotenv@8.6.0: {}
 

@@ -45,11 +45,8 @@
     "vitest": "^3.0.5"
   },
   "dependencies": {
-    "@noble/curves": "^1.8.1",
-    "@scure/bip32": "^1.6.2",
-    "@scure/bip39": "^1.5.4",
-    "@x402/core": "workspace:^",
-    "algosdk": "^3.5.0"
+    "@algorandfoundation/algokit-utils": "10.0.0-alpha.39",
+    "@x402/core": "workspace:^"
   },
   "exports": {
     ".": {

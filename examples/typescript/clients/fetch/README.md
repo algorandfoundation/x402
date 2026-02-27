@@ -9,7 +9,9 @@ import { registerExactSvmScheme } from "@x402/svm/exact/client";
 import { registerExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
-import algosdk from "algosdk";
+import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+import { decodeTransaction, bytesForSigning, encodeSignedTransaction } from "@algorandfoundation/algokit-utils/transact";
 import { base58 } from "@scure/base";
 
 const client = new x402Client();
@@ -17,15 +19,17 @@ registerExactEvmScheme(client, { signer: privateKeyToAccount(process.env.EVM_PRI
 registerExactSvmScheme(client, { signer: (await createKeyPairSignerFromBytes(base58.decode(process.env.SVM_PRIVATE_KEY))) });
 
 const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY, "base64");
+const seed = secretKey.slice(0, 32);
+const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
 const avmSigner = {
-  address: algosdk.encodeAddress(secretKey.slice(32)),
+  address: encodeAddress(ed25519Pubkey),
   signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-    return txns.map((txn, i) => {
+    return Promise.all(txns.map(async (txn, i) => {
       if (indexesToSign && !indexesToSign.includes(i)) return null;
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, secretKey);
-      return signed.blob;
-    });
+      const decoded = decodeTransaction(txn);
+      const sig = await rawEd25519Signer(bytesForSigning.transaction(decoded));
+      return encodeSignedTransaction({ txn: decoded, sig });
+    }));
   },
 };
 registerExactAvmScheme(client, { signer: avmSigner });

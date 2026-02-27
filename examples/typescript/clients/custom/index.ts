@@ -11,7 +11,13 @@ import {
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
 import { ExactAvmScheme } from "@x402/avm/exact/client";
-import algosdk from "algosdk";
+import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+import {
+  decodeTransaction,
+  bytesForSigning,
+  encodeSignedTransaction,
+} from "@algorandfoundation/algokit-utils/transact";
 import type { PaymentRequirements } from "@x402/core/types";
 
 config();
@@ -117,16 +123,21 @@ async function main(): Promise<void> {
   if (secretKey.length !== 64) {
     throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
   }
-  const address = algosdk.encodeAddress(secretKey.slice(32));
+  const seed = secretKey.slice(0, 32);
+  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
+  const address = encodeAddress(ed25519Pubkey);
   const avmSigner = {
     address,
     signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return txns.map((txn, i) => {
-        if (indexesToSign && !indexesToSign.includes(i)) return null;
-        const decoded = algosdk.decodeUnsignedTransaction(txn);
-        const signed = algosdk.signTransaction(decoded, secretKey);
-        return signed.blob;
-      });
+      return Promise.all(
+        txns.map(async (txn, i) => {
+          if (indexesToSign && !indexesToSign.includes(i)) return null;
+          const decoded = decodeTransaction(txn);
+          const msg = bytesForSigning.transaction(decoded);
+          const sig = await rawEd25519Signer(msg);
+          return encodeSignedTransaction({ txn: decoded, sig });
+        }),
+      );
     },
   };
   console.info(`AVM signer: ${address}`);

@@ -1,5 +1,13 @@
 import { Buffer } from "buffer";
-import algosdk, { Algodv2 } from "algosdk";
+import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
+import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+import { seedFromMnemonic, secretKeyToMnemonic } from "@algorandfoundation/algokit-utils/algo25";
+import {
+  decodeTransaction as decodeUnsignedTransaction,
+  bytesForSigning,
+  encodeSignedTransaction,
+} from "@algorandfoundation/algokit-utils/transact";
 
 import { SupportedAVMNetworks, Network } from "../../types/shared";
 import { AlgorandClient, WalletAccount } from "../../schemes/exact/avm/types";
@@ -62,36 +70,45 @@ function assertAvmNetwork(network: Network): asserts network is SupportedAvmNetw
  *
  * @param network - The Algorand network to connect to
  * @param options - Optional configuration for the Algorand client
- * @returns An Algodv2 client instance configured for the specified network
+ * @returns An AlgodClient instance configured for the specified network
  */
-function resolveAlgodClient(network: SupportedAvmNetwork, options?: AlgodClientOptions): Algodv2 {
+function resolveAlgodClient(network: SupportedAvmNetwork, options?: AlgodClientOptions): AlgodClient {
   const server = options?.algodServer ?? DEFAULT_ALGOD_ENDPOINTS[network];
   if (!server) {
     throw new Error(`No algod endpoint configured for network: ${network}`);
   }
 
   const token = options?.algodToken ?? "";
-  const port = options?.algodPort ?? "";
 
-  return new algosdk.Algodv2(token, server, port);
+  return new AlgodClient({ baseUrl: server, token: token || undefined });
 }
 
 /**
  * Derives an Algorand account from a secret key or mnemonic.
  *
  * @param secret - The secret key (hex string) or mnemonic phrase
- * @returns The derived Algorand account with address and secret key
+ * @returns The derived Algorand account with address, seed, and signing function
  */
 function deriveAccount(secret: string) {
   const trimmed = secret.trim();
+  let seed: Uint8Array;
+
   if (trimmed.split(/\s+/).length === 25) {
-    return algosdk.mnemonicToSecretKey(trimmed);
+    // It's a mnemonic
+    seed = seedFromMnemonic(trimmed);
+  } else {
+    // It's a hex-encoded secret key
+    const normalized = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
+    const secretKey = new Uint8Array(Buffer.from(normalized, "hex"));
+    // Convert to mnemonic and back to get the seed
+    const mnemonic = secretKeyToMnemonic(secretKey);
+    seed = seedFromMnemonic(mnemonic);
   }
 
-  const normalized = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
-  const secretKey = new Uint8Array(Buffer.from(normalized, "hex"));
-  const mnemonic = algosdk.secretKeyToMnemonic(secretKey);
-  return algosdk.mnemonicToSecretKey(mnemonic);
+  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
+  const address = encodeAddress(ed25519Pubkey);
+
+  return { addr: address, seed, ed25519Pubkey, rawEd25519Signer };
 }
 
 /**
@@ -134,36 +151,43 @@ export function createSigner(
     address,
     client: algorandClient.client,
     async signTransactions(transactions: Uint8Array[], indexesToSign?: number[]) {
-      return transactions.map((txnBytes, idx) => {
-        if (indexesToSign && !indexesToSign.includes(idx)) {
-          return null;
-        }
-        const txn = algosdk.decodeUnsignedTransaction(txnBytes);
-        const { blob } = algosdk.signTransaction(txn, account.sk);
-        return blob;
-      });
+      return Promise.all(
+        transactions.map(async (txnBytes, idx) => {
+          if (indexesToSign && !indexesToSign.includes(idx)) {
+            return null;
+          }
+          const txn = decodeUnsignedTransaction(txnBytes);
+          const msg = bytesForSigning.transaction(txn);
+          const sig = await account.rawEd25519Signer(msg);
+          return encodeSignedTransaction({ txn, sig });
+        }),
+      );
     },
   };
 }
 
 /**
- * Creates an AVM signer from an algosdk account
+ * Creates an AVM signer from account derivation data
  *
- * @param account - The algosdk Account to create a signer from
- * @returns An AvmSigner that signs transactions using the account's secret key
+ * @param account - The derived account containing address and signing function
+ * @returns An AvmSigner that signs transactions using the account's signing function
  */
-export function createSignerFromAccount(account: algosdk.Account): AvmSigner {
+function createSignerFromDerivedAccount(account: {
+  addr: string;
+  rawEd25519Signer: (msg: Uint8Array) => Promise<Uint8Array>;
+}): AvmSigner {
   return {
-    address: account.addr.toString(),
+    address: account.addr,
     async signTransactions(txns: Uint8Array[], indexesToSign?: number[]) {
       const indexes = indexesToSign ?? txns.map((_, i) => i);
       const signed: (Uint8Array | null)[] = [];
 
       for (let i = 0; i < txns.length; i++) {
         if (indexes.includes(i)) {
-          const decodedTxn = algosdk.decodeUnsignedTransaction(txns[i]);
-          const signedTxn = algosdk.signTransaction(decodedTxn, account.sk);
-          signed.push(signedTxn.blob);
+          const decodedTxn = decodeUnsignedTransaction(txns[i]);
+          const msg = bytesForSigning.transaction(decodedTxn);
+          const sig = await account.rawEd25519Signer(msg);
+          signed.push(encodeSignedTransaction({ txn: decodedTxn, sig }));
         } else {
           signed.push(null);
         }
@@ -175,12 +199,24 @@ export function createSignerFromAccount(account: algosdk.Account): AvmSigner {
 }
 
 /**
+ * Creates an AVM signer from seed bytes and public key
+ *
+ * @param seed - The 32-byte ed25519 seed
+ * @returns An AvmSigner that signs transactions using the seed-derived key
+ */
+export function createSignerFromSeed(seed: Uint8Array): AvmSigner {
+  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
+  const address = encodeAddress(ed25519Pubkey);
+  return createSignerFromDerivedAccount({ addr: address, rawEd25519Signer });
+}
+
+/**
  * Creates an AVM signer from a mnemonic
  *
  * @param mnemonic - The 25-word Algorand mnemonic phrase
  * @returns An AvmSigner that signs transactions using the derived account
  */
 export async function createSignerFromMnemonic(mnemonic: string): Promise<AvmSigner> {
-  const account = algosdk.mnemonicToSecretKey(mnemonic);
-  return createSignerFromAccount(account);
+  const seed = seedFromMnemonic(mnemonic);
+  return createSignerFromSeed(seed);
 }

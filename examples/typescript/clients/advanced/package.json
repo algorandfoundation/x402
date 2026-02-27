@@ -22,7 +22,7 @@
     "dotenv": "^16.4.7",
     "viem": "^2.39.0",
     "@solana/kit": "^2.1.1",
-    "algosdk": "^3.5.2"
+    "@algorandfoundation/algokit-utils": "10.0.0-alpha.39"
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",

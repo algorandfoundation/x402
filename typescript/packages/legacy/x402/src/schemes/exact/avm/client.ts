@@ -1,7 +1,14 @@
 import { PaymentPayload, PaymentRequirements } from "../../../types/verify";
 import { ExactAvmPayload, WalletAccount, AlgorandClient } from "./types";
 import { encodePayment } from "./utils/paymentUtils";
-import algosdk from "algosdk";
+import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
+import { Address } from "@algorandfoundation/algokit-utils/common";
+import {
+  Transaction,
+  TransactionType,
+  groupTransactions,
+  encodeTransactionRaw,
+} from "@algorandfoundation/algokit-utils/transact";
 
 /**
  * Interface representing a payment payload
@@ -18,7 +25,7 @@ interface AtomicTransactionGroup {
  * @returns The current round number
  */
 async function getCurrentRound(client: AlgorandClient): Promise<number> {
-  const status = await client.client.status().do();
+  const status = await client.client.status();
   // Algod may return either camelCase or hyphenated keys depending on the transport.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const statusAny = status as any;
@@ -36,20 +43,24 @@ async function getCurrentRound(client: AlgorandClient): Promise<number> {
 }
 
 /**
+ * Suggested params type for transaction construction
+ */
+interface SuggestedParams {
+  fee: bigint;
+  firstValid: bigint;
+  lastValid: bigint;
+  genesisHash: Uint8Array;
+  genesisId: string;
+  flatFee?: boolean;
+}
+
+/**
  * X402 transaction group builder for Algorand
  * Simplifies creation of complex transaction groups for x402 payments
  */
 export class X402TransactionGroupBuilder {
-  private composer: algosdk.AtomicTransactionComposer;
-  private transactions: algosdk.Transaction[] = [];
+  private transactions: Transaction[] = [];
   private txnIndices: number[] = [];
-
-  /**
-   * Creates a new instance of X402TransactionGroupBuilder
-   */
-  constructor() {
-    this.composer = new algosdk.AtomicTransactionComposer();
-  }
 
   /**
    * Adds a x402 payment transaction to the group
@@ -65,33 +76,41 @@ export class X402TransactionGroupBuilder {
     from: string,
     to: string,
     amount: number,
-    params: algosdk.SuggestedParams,
+    params: SuggestedParams,
     asset?: number,
   ): number {
-    const modifiedParams = { ...params };
-    modifiedParams.flatFee = true;
-
-    let txn: algosdk.Transaction;
+    let txn: Transaction;
     if (asset) {
-      txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-        sender: from,
-        receiver: to,
-        amount: amount,
-        assetIndex: asset,
-        closeRemainderTo: undefined,
-        note: undefined,
-        suggestedParams: modifiedParams,
+      txn = new Transaction({
+        type: TransactionType.AssetTransfer,
+        sender: Address.fromString(from),
+        fee: params.fee,
+        firstValid: params.firstValid,
+        lastValid: params.lastValid,
+        genesisHash: params.genesisHash,
+        genesisId: params.genesisId,
+        assetTransfer: {
+          receiver: Address.fromString(to),
+          amount: BigInt(amount),
+          assetId: BigInt(asset),
+        },
       });
     } else {
-      txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-        sender: from,
-        receiver: to,
-        amount: amount,
-        suggestedParams: modifiedParams,
+      txn = new Transaction({
+        type: TransactionType.Payment,
+        sender: Address.fromString(from),
+        fee: params.fee,
+        firstValid: params.firstValid,
+        lastValid: params.lastValid,
+        genesisHash: params.genesisHash,
+        genesisId: params.genesisId,
+        payment: {
+          receiver: Address.fromString(to),
+          amount: BigInt(amount),
+        },
       });
     }
 
-    this.composer.addTransaction({ txn, signer: algosdk.makeEmptyTransactionSigner() });
     const currentIndex = this.transactions.length;
     this.transactions.push(txn);
     this.txnIndices.push(currentIndex);
@@ -107,19 +126,21 @@ export class X402TransactionGroupBuilder {
    * @param params - Transaction parameters
    * @returns Index of the fee transaction in the group
    */
-  addX402FeePayment(feePayer: string, fee: number, params: algosdk.SuggestedParams): number {
-    const modifiedParams = { ...params };
-    modifiedParams.flatFee = true;
-    modifiedParams.fee = BigInt(fee);
-
-    const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-      sender: feePayer,
-      receiver: feePayer,
-      amount: 0,
-      suggestedParams: modifiedParams,
+  addX402FeePayment(feePayer: string, fee: number, params: SuggestedParams): number {
+    const txn = new Transaction({
+      type: TransactionType.Payment,
+      sender: Address.fromString(feePayer),
+      fee: BigInt(fee),
+      firstValid: params.firstValid,
+      lastValid: params.lastValid,
+      genesisHash: params.genesisHash,
+      genesisId: params.genesisId,
+      payment: {
+        receiver: Address.fromString(feePayer),
+        amount: BigInt(0),
+      },
     });
 
-    this.composer.addTransaction({ txn, signer: algosdk.makeEmptyTransactionSigner() });
     const currentIndex = this.transactions.length;
     this.transactions.push(txn);
     this.txnIndices.push(currentIndex);
@@ -140,10 +161,10 @@ export class X402TransactionGroupBuilder {
     }
 
     // Assign group ID to all transactions
-    algosdk.assignGroupID(this.transactions);
+    groupTransactions(this.transactions);
 
     const encodedGroup = this.transactions.map(txn =>
-      Buffer.from(algosdk.encodeUnsignedTransaction(txn)).toString("base64"),
+      Buffer.from(encodeTransactionRaw(txn)).toString("base64"),
     );
 
     return {
@@ -178,11 +199,10 @@ async function createAtomicTransactionGroup(
 ): Promise<AtomicTransactionGroup> {
   const standardFee = 1000;
 
-  const params = await client.client.getTransactionParams().do();
+  const params = await client.client.suggestedParams();
 
   params.firstValid = BigInt(firstRound);
   params.lastValid = BigInt(lastRound);
-  params.flatFee = true;
 
   const composer = new X402TransactionGroupBuilder();
   let paymentIndex: number;

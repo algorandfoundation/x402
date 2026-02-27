@@ -1,4 +1,9 @@
-import algosdk from "algosdk";
+import {
+  decodeSignedTransaction as decodeSignedTxn,
+  decodeTransaction as decodeUnsignedTxn,
+  encodeTransactionRaw,
+} from "@algorandfoundation/algokit-utils/transact";
+import type { SignedTransaction, Transaction } from "@algorandfoundation/algokit-utils/transact";
 import { PaymentPayload, PaymentRequirements, SettleResponse } from "../../../../types/verify";
 import { WalletAccount, ExactAvmPayload } from "../types";
 import { verify } from "./verify";
@@ -9,9 +14,9 @@ import { verify } from "./verify";
  * @param encodedTxn - The base64-encoded signed transaction string
  * @returns The decoded Algorand signed transaction
  */
-function decodeSignedTransaction(encodedTxn: string): algosdk.SignedTransaction {
+function decodeSignedTransaction(encodedTxn: string): SignedTransaction {
   const txnBytes = Buffer.from(encodedTxn, "base64");
-  const decodedSignedTxn = algosdk.decodeSignedTransaction(txnBytes);
+  const decodedSignedTxn = decodeSignedTxn(txnBytes);
   return decodedSignedTxn;
 }
 
@@ -21,9 +26,9 @@ function decodeSignedTransaction(encodedTxn: string): algosdk.SignedTransaction 
  * @param encodedTxn - The base64-encoded unsigned transaction string
  * @returns The decoded Algorand transaction
  */
-function decodeTransaction(encodedTxn: string): algosdk.Transaction {
+function decodeTransaction(encodedTxn: string): Transaction {
   const txnBytes = Buffer.from(encodedTxn, "base64");
-  return algosdk.decodeUnsignedTransaction(txnBytes);
+  return decodeUnsignedTxn(txnBytes);
 }
 
 /**
@@ -105,7 +110,9 @@ export async function settle(
 
           if (unsignedTxn.sender.toString() === feePayer) {
             // This is a facilitator transaction that needs signing
-            const signedFeePayerTxn = await wallet.signTransactions([unsignedTxn.toByte()]);
+            const signedFeePayerTxn = await wallet.signTransactions([
+              encodeTransactionRaw(unsignedTxn),
+            ]);
 
             if (!signedFeePayerTxn[0]) {
               console.error("Fee payer transaction signing failed");
@@ -140,12 +147,12 @@ export async function settle(
     }
 
     // Submit the transaction group to the Algorand network
-    const result = await wallet.client.sendRawTransaction(txnGroupBytes).do();
+    const result = await wallet.client.sendRawTransaction(txnGroupBytes);
 
     // Return the transaction ID as proof of payment
     return {
       success: true,
-      transaction: result.txid,
+      transaction: result.txId,
       network: paymentPayload.network,
       payer,
     };

@@ -24,11 +24,11 @@ This package provides three main components for handling x402 payments on Algora
 
 **Client:**
 - `ExactAvmClient` - V2 client implementation using ASA transfers
-- `ClientAvmSigner` - TypeScript interface for client signers (implement with `algosdk`)
+- `ClientAvmSigner` - TypeScript interface for client signers (implement with `@algorandfoundation/algokit-utils`)
 
 **Facilitator:**
 - `ExactAvmFacilitator` - V2 facilitator for payment verification and settlement
-- `FacilitatorAvmSigner` - TypeScript interface for facilitator signers (implement with `algosdk`)
+- `FacilitatorAvmSigner` - TypeScript interface for facilitator signers (implement with `@algorandfoundation/algokit-utils`)
 
 **Service:**
 - `ExactAvmServer` - V2 service for building payment requirements
@@ -112,26 +112,30 @@ const client = x402Client.fromConfig({
 
 ## Signer Implementation
 
-This package exports `ClientAvmSigner` and `FacilitatorAvmSigner` as TypeScript interfaces. You implement them directly using `algosdk`:
+This package exports `ClientAvmSigner` and `FacilitatorAvmSigner` as TypeScript interfaces. You implement them directly using `@algorandfoundation/algokit-utils`:
 
 ### Client Signer
 
 ```typescript
-import algosdk from "algosdk";
+import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+import { decodeTransaction, bytesForSigning, encodeSignedTransaction } from "@algorandfoundation/algokit-utils/transact";
 
 // Decode Base64 private key (64 bytes: 32-byte seed + 32-byte public key)
 const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, "base64");
-const address = algosdk.encodeAddress(secretKey.slice(32));
+const seed = secretKey.slice(0, 32);
+const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
+const address = encodeAddress(ed25519Pubkey);
 
 const avmSigner: ClientAvmSigner = {
   address,
   signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-    return txns.map((txn, i) => {
+    return Promise.all(txns.map(async (txn, i) => {
       if (indexesToSign && !indexesToSign.includes(i)) return null;
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, secretKey);
-      return signed.blob;
-    });
+      const decoded = decodeTransaction(txn);
+      const sig = await rawEd25519Signer(bytesForSigning.transaction(decoded));
+      return encodeSignedTransaction({ txn: decoded, sig });
+    }));
   },
 };
 ```
@@ -181,9 +185,12 @@ The `AVM_PRIVATE_KEY` is a Base64-encoded string containing a 64-byte Algorand p
 To derive the Algorand address from the private key:
 
 ```typescript
-import algosdk from "algosdk";
+import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
 const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, "base64");
-const address = algosdk.encodeAddress(secretKey.slice(32));
+const seed = secretKey.slice(0, 32);
+const { ed25519Pubkey } = ed25519Generator(seed);
+const address = encodeAddress(ed25519Pubkey);
 ```
 
 ### Algod Node Defaults
@@ -226,4 +233,4 @@ pnpm format
 - `@x402/fetch` - HTTP wrapper with automatic payment handling
 - `@x402/evm` - EVM/Ethereum implementation
 - `@x402/svm` - Solana/SVM implementation
-- `algosdk` - Algorand JavaScript SDK (peer dependency)
+- `@algorandfoundation/algokit-utils` - Algorand utility library (dependency)

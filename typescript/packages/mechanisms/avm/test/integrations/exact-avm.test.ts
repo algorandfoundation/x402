@@ -25,7 +25,15 @@ import {
 import { ExactAvmScheme as ExactAvmServer } from '../../src/exact/server/scheme'
 import { ExactAvmScheme as ExactAvmFacilitator } from '../../src/exact/facilitator/scheme'
 import type { ExactAvmPayloadV2 } from '../../src/types'
-import algosdk from 'algosdk'
+import { AlgodClient } from '@algorandfoundation/algokit-utils/algod-client'
+import { encodeAddress } from '@algorandfoundation/algokit-utils/common'
+import { ed25519Generator } from '@algorandfoundation/algokit-utils/crypto'
+import {
+  decodeTransaction,
+  bytesForSigning,
+  encodeSignedTransaction,
+} from '@algorandfoundation/algokit-utils/transact'
+import { waitForConfirmation } from '@algorandfoundation/algokit-utils/transaction'
 
 // Load private keys from environment (Base64-encoded 64-byte keys)
 const CLIENT_PRIVATE_KEY = process.env.CLIENT_PRIVATE_KEY
@@ -47,10 +55,12 @@ if (clientSecretKey.length !== 64 || facilitatorSecretKey.length !== 64) {
   )
 }
 
-const FACILITATOR_ADDRESS = algosdk.encodeAddress(facilitatorSecretKey.slice(32))
+const facilitatorSeed = facilitatorSecretKey.slice(0, 32)
+const { ed25519Pubkey: facilitatorPubkey } = ed25519Generator(facilitatorSeed)
+const FACILITATOR_ADDRESS = encodeAddress(facilitatorPubkey)
 
 // Create Algod client for testnet
-const algodClient = new algosdk.Algodv2('', DEFAULT_ALGOD_TESTNET, '')
+const algodClient = new AlgodClient({ baseUrl: DEFAULT_ALGOD_TESTNET })
 
 /**
  * AVM Facilitator Client wrapper
@@ -136,16 +146,19 @@ function buildAvmPaymentRequirements(
  * Create a ClientAvmSigner from a secret key
  */
 function createClientSigner(secretKey: Buffer) {
-  const address = algosdk.encodeAddress(secretKey.slice(32))
+  const seed = secretKey.slice(0, 32)
+  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed)
+  const address = encodeAddress(ed25519Pubkey)
   return {
     address,
     signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return txns.map((txn, i) => {
+      return Promise.all(txns.map(async (txn, i) => {
         if (indexesToSign && !indexesToSign.includes(i)) return null
-        const decoded = algosdk.decodeUnsignedTransaction(txn)
-        const signed = algosdk.signTransaction(decoded, secretKey)
-        return signed.blob
-      })
+        const decoded = decodeTransaction(txn)
+        const msg = bytesForSigning.transaction(decoded)
+        const sig = await rawEd25519Signer(msg)
+        return encodeSignedTransaction({ txn: decoded, sig })
+      }))
     },
   }
 }
@@ -154,37 +167,32 @@ function createClientSigner(secretKey: Buffer) {
  * Create a FacilitatorAvmSigner from a secret key
  */
 function createFacilitatorSigner(secretKey: Buffer) {
-  const address = algosdk.encodeAddress(secretKey.slice(32))
+  const seed = secretKey.slice(0, 32)
+  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed)
+  const address = encodeAddress(ed25519Pubkey)
   return {
     getAddresses: () => [address] as readonly string[],
 
     signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
-      const decoded = algosdk.decodeUnsignedTransaction(txn)
-      const signed = algosdk.signTransaction(decoded, secretKey)
-      return signed.blob
+      const decoded = decodeTransaction(txn)
+      const msg = bytesForSigning.transaction(decoded)
+      const sig = await rawEd25519Signer(msg)
+      return encodeSignedTransaction({ txn: decoded, sig })
     },
 
     getAlgodClient: (_network: string) => algodClient,
 
     simulateTransactions: async (txns: Uint8Array[], _network: string) => {
-      const request = new algosdk.modelsv2.SimulateRequest({
-        txnGroups: [
-          new algosdk.modelsv2.SimulateRequestTransactionGroup({
-            txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
-          }),
-        ],
-        allowUnnamedResources: true,
-      })
-      return await algodClient.simulateTransactions(request).do()
+      return await algodClient.simulateRawTransactions(txns)
     },
 
     sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
-      const response = await algodClient.sendRawTransaction(signedTxns).do()
-      return response.txid
+      const response = await algodClient.sendRawTransaction(signedTxns)
+      return response.txId
     },
 
     waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
-      return await algosdk.waitForConfirmation(algodClient, txId, waitRounds)
+      return await waitForConfirmation(txId, waitRounds, algodClient)
     },
   }
 }

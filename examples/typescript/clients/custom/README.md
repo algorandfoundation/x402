@@ -109,20 +109,24 @@ import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
 import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
-import algosdk from "algosdk";
+import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+import { decodeTransaction, bytesForSigning, encodeSignedTransaction } from "@algorandfoundation/algokit-utils/transact";
 
 const evmSigner = privateKeyToAccount(evmPrivateKey);
 const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
 const secretKey = Buffer.from(avmPrivateKey, "base64");
+const seed = secretKey.slice(0, 32);
+const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
 const avmSigner = {
-  address: algosdk.encodeAddress(secretKey.slice(32)),
+  address: encodeAddress(ed25519Pubkey),
   signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-    return txns.map((txn, i) => {
+    return Promise.all(txns.map(async (txn, i) => {
       if (indexesToSign && !indexesToSign.includes(i)) return null;
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, secretKey);
-      return signed.blob;
-    });
+      const decoded = decodeTransaction(txn);
+      const sig = await rawEd25519Signer(bytesForSigning.transaction(decoded));
+      return encodeSignedTransaction({ txn: decoded, sig });
+    }));
   },
 };
 

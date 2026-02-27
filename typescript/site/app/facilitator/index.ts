@@ -12,7 +12,15 @@ import { toFacilitatorSvmSigner } from "@x402/svm";
 import { ExactSvmScheme } from "@x402/svm/exact/facilitator";
 import { ExactSvmSchemeV1 } from "@x402/svm/exact/v1/facilitator";
 import { DEFAULT_ALGOD_TESTNET } from "@x402/avm";
-import algosdk from "algosdk";
+import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
+import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+import {
+  decodeTransaction,
+  bytesForSigning,
+  encodeSignedTransaction,
+} from "@algorandfoundation/algokit-utils/transact";
+import { waitForConfirmation } from "@algorandfoundation/algokit-utils/transaction";
 import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
 import { ExactAvmSchemeV1 } from "@x402/avm/exact/v1/facilitator";
 import { createWalletClient, http, publicActions } from "viem";
@@ -107,40 +115,35 @@ async function createFacilitator(): Promise<x402Facilitator> {
       "FACILITATOR_AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)",
     );
   }
-  const avmAddress = algosdk.encodeAddress(secretKey.slice(32));
-  const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
+  const seed = secretKey.slice(0, 32);
+  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
+  const avmAddress = encodeAddress(ed25519Pubkey);
+  const algodClient = new AlgodClient({ baseUrl: DEFAULT_ALGOD_TESTNET });
 
   // Initialize AVM signer
   const avmSigner = {
     getAddresses: () => [avmAddress] as readonly string[],
 
     signTransaction: async (txn: Uint8Array, _: string) => {
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, secretKey);
-      return signed.blob;
+      const decoded = decodeTransaction(txn);
+      const msg = bytesForSigning.transaction(decoded);
+      const sig = await rawEd25519Signer(msg);
+      return encodeSignedTransaction({ txn: decoded, sig });
     },
 
     getAlgodClient: (_: string) => algodClient,
 
     simulateTransactions: async (txns: Uint8Array[], _: string) => {
-      const request = new algosdk.modelsv2.SimulateRequest({
-        txnGroups: [
-          new algosdk.modelsv2.SimulateRequestTransactionGroup({
-            txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
-          }),
-        ],
-        allowUnnamedResources: true,
-      });
-      return await algodClient.simulateTransactions(request).do();
+      return await algodClient.simulateRawTransactions(txns);
     },
 
     sendTransactions: async (signedTxns: Uint8Array[], _: string) => {
-      const response = await algodClient.sendRawTransaction(signedTxns).do();
-      return response.txid;
+      const response = await algodClient.sendRawTransaction(signedTxns);
+      return response.txId;
     },
 
     waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
-      return await algosdk.waitForConfirmation(algodClient, txId, waitRounds);
+      return await waitForConfirmation(txId, waitRounds, algodClient);
     },
   };
 

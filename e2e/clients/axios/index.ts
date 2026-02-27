@@ -4,7 +4,13 @@ import { wrapAxiosWithPayment, decodePaymentResponseHeader } from "@x402/axios";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
-import algosdk from "algosdk";
+import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+import {
+  decodeTransaction,
+  bytesForSigning,
+  encodeSignedTransaction,
+} from "@algorandfoundation/algokit-utils/transact";
 import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactEvmSchemeV1 } from "@x402/evm/v1";
@@ -49,16 +55,19 @@ const client = new x402Client();
 // Register AVM if key is provided
 if (process.env.AVM_PRIVATE_KEY) {
   const avmSecretKey = Buffer.from(process.env.AVM_PRIVATE_KEY, "base64");
-  const avmAddress = algosdk.encodeAddress(avmSecretKey.slice(32));
+  const seed = avmSecretKey.slice(0, 32);
+  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
+  const avmAddress = encodeAddress(ed25519Pubkey);
   const avmSigner = {
     address: avmAddress,
     signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return txns.map((txn, i) => {
+      return Promise.all(txns.map(async (txn, i) => {
         if (indexesToSign && !indexesToSign.includes(i)) return null;
-        const decoded = algosdk.decodeUnsignedTransaction(txn);
-        const signed = algosdk.signTransaction(decoded, avmSecretKey);
-        return signed.blob;
-      });
+        const decoded = decodeTransaction(txn);
+        const msg = bytesForSigning.transaction(decoded);
+        const sig = await rawEd25519Signer(msg);
+        return encodeSignedTransaction({ txn: decoded, sig });
+      }));
     },
   };
   client.register("algorand:*", new ExactAvmScheme(avmSigner));

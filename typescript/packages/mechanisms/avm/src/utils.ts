@@ -5,7 +5,14 @@
  * address validation, and network identification.
  */
 
-import algosdk from 'algosdk'
+import { AlgodClient } from '@algorandfoundation/algokit-utils/algod-client'
+import {
+  decodeTransaction as decodeUnsignedTxn,
+  decodeSignedTransaction as decodeSignedTxn,
+  groupTransactions,
+} from '@algorandfoundation/algokit-utils/transact'
+import type { Transaction } from '@algorandfoundation/algokit-utils/transact'
+import { isValidAddress } from '@algorandfoundation/algokit-utils/common'
 import type { Network } from '@x402/core/types'
 import {
   NETWORK_TO_ALGOD,
@@ -37,9 +44,9 @@ export function createAlgodClient(
   network: Network,
   customUrl?: string,
   token: string = '',
-): algosdk.Algodv2 {
+): AlgodClient {
   const url = customUrl ?? NETWORK_TO_ALGOD[network] ?? DEFAULT_ALGOD_TESTNET
-  return new algosdk.Algodv2(token, url, '')
+  return new AlgodClient({ baseUrl: url, token: token || undefined })
 }
 
 /**
@@ -68,9 +75,9 @@ export function decodeTransaction(encoded: string): Uint8Array {
  * @param encoded - Base64 encoded signed transaction
  * @returns Decoded signed transaction object
  */
-export function decodeSignedTransaction(encoded: string): algosdk.SignedTransaction {
+export function decodeSignedTransaction(encoded: string) {
   const bytes = decodeTransaction(encoded)
-  return algosdk.decodeSignedTransaction(bytes)
+  return decodeSignedTxn(bytes)
 }
 
 /**
@@ -79,9 +86,9 @@ export function decodeSignedTransaction(encoded: string): algosdk.SignedTransact
  * @param encoded - Base64 encoded unsigned transaction
  * @returns Decoded transaction object
  */
-export function decodeUnsignedTransaction(encoded: string): algosdk.Transaction {
+export function decodeUnsignedTransaction(encoded: string) {
   const bytes = decodeTransaction(encoded)
-  return algosdk.decodeUnsignedTransaction(bytes)
+  return decodeUnsignedTxn(bytes)
 }
 
 /**
@@ -96,13 +103,8 @@ export function isValidAlgorandAddress(address: string): boolean {
     return false
   }
 
-  // Use algosdk for full validation (includes checksum)
-  try {
-    algosdk.decodeAddress(address)
-    return true
-  } catch {
-    return false
-  }
+  // Use algokit-utils for full validation (includes checksum)
+  return isValidAddress(address)
 }
 
 /**
@@ -114,11 +116,11 @@ export function isValidAlgorandAddress(address: string): boolean {
  */
 export function getSenderFromTransaction(txnBytes: Uint8Array, isSigned: boolean = true): string {
   if (isSigned) {
-    const signedTxn = algosdk.decodeSignedTransaction(txnBytes)
-    return algosdk.encodeAddress(signedTxn.txn.sender.publicKey)
+    const signedTxn = decodeSignedTxn(txnBytes)
+    return signedTxn.txn.sender.toString()
   }
-  const txn = algosdk.decodeUnsignedTransaction(txnBytes)
-  return algosdk.encodeAddress(txn.sender.publicKey)
+  const txn = decodeUnsignedTxn(txnBytes)
+  return txn.sender.toString()
 }
 
 /**
@@ -246,7 +248,7 @@ export function caip2ToV1(caip2Network: string): string {
  * @param txn - The transaction object
  * @returns Base64 encoded genesis hash
  */
-export function getGenesisHashFromTransaction(txn: algosdk.Transaction): string {
+export function getGenesisHashFromTransaction(txn: { genesisHash?: Uint8Array }): string {
   if (!txn.genesisHash) {
     throw new Error('Transaction does not have a genesis hash')
   }
@@ -267,7 +269,7 @@ export function validateGroupId(txns: Uint8Array[]): boolean {
   let expectedGroupId: string | null = null
 
   for (const txnBytes of txns) {
-    const txn = algosdk.decodeUnsignedTransaction(txnBytes)
+    const txn = decodeUnsignedTxn(txnBytes)
     const groupId = txn.group ? Buffer.from(txn.group).toString('base64') : null
 
     if (expectedGroupId === null) {
@@ -286,11 +288,11 @@ export function validateGroupId(txns: Uint8Array[]): boolean {
  * @param txns - Array of transactions
  * @returns Transactions with assigned group ID
  */
-export function assignGroupId(txns: algosdk.Transaction[]): algosdk.Transaction[] {
+export function assignGroupId<T extends { group?: Uint8Array }>(txns: T[]): T[] {
   if (txns.length <= 1) {
     return txns
   }
-  return algosdk.assignGroupID(txns)
+  return groupTransactions(txns as unknown as Transaction[]) as unknown as T[]
 }
 
 /**
@@ -300,8 +302,8 @@ export function assignGroupId(txns: algosdk.Transaction[]): algosdk.Transaction[
  * @returns Transaction ID string
  */
 export function getTransactionId(signedTxnBytes: Uint8Array): string {
-  const signedTxn = algosdk.decodeSignedTransaction(signedTxnBytes)
-  return signedTxn.txn.txID()
+  const signedTxn = decodeSignedTxn(signedTxnBytes)
+  return signedTxn.txn.txId()
 }
 
 /**
@@ -311,6 +313,10 @@ export function getTransactionId(signedTxnBytes: Uint8Array): string {
  * @returns True if the transaction has a signature
  */
 export function hasSignature(signedTxnBytes: Uint8Array): boolean {
-  const signedTxn = algosdk.decodeSignedTransaction(signedTxnBytes)
+  const signedTxn = decodeSignedTxn(signedTxnBytes)
   return signedTxn.sig !== undefined || signedTxn.lsig !== undefined || signedTxn.msig !== undefined
 }
+
+// Re-export algokit-utils types that consumers may need
+export { AlgodClient } from '@algorandfoundation/algokit-utils/algod-client'
+export { Address, encodeAddress, decodeAddress } from '@algorandfoundation/algokit-utils/common'

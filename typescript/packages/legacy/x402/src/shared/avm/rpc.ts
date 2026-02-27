@@ -1,4 +1,4 @@
-import algosdk from "algosdk";
+import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
 import { SupportedAVMNetworks, type Network } from "../../types/shared/network";
 
 /**
@@ -20,15 +20,15 @@ export const NetworkToAlgodUrl: Record<string, string> = {
  *
  * @param network - The Algorand network to connect to
  * @param customUrl - Optional custom Algod endpoint URL
- * @returns An Algodv2 client instance
+ * @returns An AlgodClient instance
  */
-export function createAlgodClient(network: Network, customUrl?: string): algosdk.Algodv2 {
+export function createAlgodClient(network: Network, customUrl?: string): AlgodClient {
   if (!SupportedAVMNetworks.includes(network)) {
     throw new Error(`Unsupported AVM network: ${network}`);
   }
 
   const url = customUrl ?? NetworkToAlgodUrl[network] ?? DEFAULT_ALGOD_TESTNET;
-  return new algosdk.Algodv2("", url, "");
+  return new AlgodClient({ baseUrl: url });
 }
 
 /**

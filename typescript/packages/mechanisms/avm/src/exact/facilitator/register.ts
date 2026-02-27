@@ -43,8 +43,6 @@ export interface AvmFacilitatorConfig {
  * import { registerExactAvmScheme } from "@x402/avm/exact/facilitator";
  * import type { FacilitatorAvmSigner } from "@x402/avm";
  * import { x402Facilitator } from "@x402/core/facilitator";
- * import algosdk from "algosdk";
- *
  * // Create signer implementing FacilitatorAvmSigner interface
  * // See examples/typescript/facilitator for full implementation
  * const signer: FacilitatorAvmSigner = createFacilitatorSigner(

@@ -2,25 +2,29 @@
  * AVM (Algorand) Signer Interfaces for x402 Payment Protocol
  *
  * This module defines the signer interfaces for client and facilitator operations.
- * Implementations should be provided by the integrator using algosdk directly.
+ * Implementations should be provided by the integrator using @algorandfoundation/algokit-utils.
  *
- * @example Client implementation with algosdk:
+ * @example Client implementation with algokit-utils:
  * ```typescript
- * import algosdk from "algosdk";
+ * import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+ * import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+ * import { decodeTransaction, encodeTransactionRaw } from "@algorandfoundation/algokit-utils/transact";
  * import type { ClientAvmSigner } from "@x402/avm";
  *
  * const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, 'base64');
- * const address = algosdk.encodeAddress(secretKey.slice(32));
+ * const seed = secretKey.slice(0, 32);
+ * const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
+ * const address = encodeAddress(ed25519Pubkey);
  *
  * const signer: ClientAvmSigner = {
  *   address,
  *   signTransactions: async (txns, indexesToSign) => {
- *     return txns.map((txn, i) => {
+ *     return Promise.all(txns.map(async (txn, i) => {
  *       if (indexesToSign && !indexesToSign.includes(i)) return null;
- *       const decoded = algosdk.decodeUnsignedTransaction(txn);
- *       const signed = algosdk.signTransaction(decoded, secretKey);
- *       return signed.blob;
- *     });
+ *       const decoded = decodeTransaction(txn);
+ *       const sig = await rawEd25519Signer(encodeTransactionRaw(decoded));
+ *       return encodeTransactionRaw({ ...decoded, sig } as any);
+ *     }));
  *   },
  * };
  * ```
@@ -56,7 +60,7 @@ export interface ClientAvmSigner {
 export interface ClientAvmConfig {
   /**
    * Pre-configured Algod client (takes precedence over URL)
-   * Should be an algosdk.Algodv2 instance
+   * Should be an AlgodClient instance from @algorandfoundation/algokit-utils
    */
   algodClient?: unknown
 
@@ -77,21 +81,25 @@ export interface ClientAvmConfig {
  * Used by the facilitator to verify and settle payments.
  * Supports multiple addresses for load balancing and key rotation.
  *
- * @example Implementation with algosdk:
+ * @example Implementation with algokit-utils:
  * ```typescript
- * import algosdk from "algosdk";
+ * import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+ * import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+ * import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
  * import type { FacilitatorAvmSigner } from "@x402/avm";
  *
  * const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, 'base64');
- * const address = algosdk.encodeAddress(secretKey.slice(32));
- * const algodClient = new algosdk.Algodv2("", "https://testnet-api.algonode.cloud", "");
+ * const seed = secretKey.slice(0, 32);
+ * const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
+ * const address = encodeAddress(ed25519Pubkey);
+ * const algodClient = new AlgodClient({ baseUrl: "https://testnet-api.algonode.cloud" });
  *
  * const signer: FacilitatorAvmSigner = {
  *   getAddresses: () => [address],
  *   signTransaction: async (txn, senderAddress) => {
- *     const decoded = algosdk.decodeUnsignedTransaction(txn);
- *     const signed = algosdk.signTransaction(decoded, secretKey);
- *     return signed.blob;
+ *     const decoded = decodeTransaction(txn);
+ *     const sig = await rawEd25519Signer(encodeTransactionRaw(decoded));
+ *     return encodeSignedTransaction({ txn: decoded, sig });
  *   },
  *   getAlgodClient: (network) => algodClient,
  *   simulateTransactions: async (txns, network) => { ... },
@@ -121,7 +129,7 @@ export interface FacilitatorAvmSigner {
    * Get Algod client for a specific network
    *
    * @param network - Network identifier (CAIP-2 or V1 format)
-   * @returns Algod client instance (algosdk.Algodv2)
+   * @returns Algod client instance (AlgodClient from @algorandfoundation/algokit-utils)
    */
   getAlgodClient(network: Network): unknown
 

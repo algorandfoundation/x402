@@ -4,8 +4,15 @@
  * Verifies and settles Algorand ASA transfer payments.
  */
 
-import algosdk from 'algosdk'
-import { ed25519 } from '@noble/curves/ed25519'
+import {
+  decodeTransaction as decodeUnsignedTxn,
+  decodeSignedTransaction as decodeSignedTxn,
+  encodeTransactionRaw,
+  encodeSignedTransaction,
+  bytesForSigning,
+} from '@algorandfoundation/algokit-utils/transact'
+import type { Transaction, SignedTransaction } from '@algorandfoundation/algokit-utils/transact'
+import { ed25519Verifier } from '@algorandfoundation/algokit-utils/crypto'
 import type {
   Network,
   PaymentPayload,
@@ -136,7 +143,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
 
     // Extract payer from payment transaction
     const paymentTxn = decoded.txns[paymentIndex].txn
-    const payer = algosdk.encodeAddress(paymentTxn.sender.publicKey)
+    const payer = paymentTxn.sender.toString()
 
     // Validate genesis hash matches network
     const networkStr = String(requirements.network)
@@ -162,7 +169,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
     if (!securityCheck.isValid) return securityCheck
 
     // Payment transaction correctness
-    const paymentCheck = this.verifyPaymentTransaction(
+    const paymentCheck = await this.verifyPaymentTransaction(
       decoded.txns[paymentIndex],
       requirements,
       paymentGroup[paymentIndex],
@@ -222,23 +229,29 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
       const txnBytes = decodeTransaction(paymentGroup[i])
 
       // Try to decode as signed, fall back to unsigned for fee payer transactions
-      let txn: algosdk.Transaction
+      let txn: Transaction
       let isAlreadySigned = false
       try {
-        const stxn = algosdk.decodeSignedTransaction(txnBytes)
+        const stxn = decodeSignedTxn(txnBytes)
+        // Validate the decode produced a valid signed transaction.
+        // algokit-utils decodeSignedTransaction is lenient and may succeed on raw unsigned
+        // bytes, returning a transaction with type "unknown" and missing fields.
+        if (!stxn.txn.type || stxn.txn.type === 'unknown') {
+          throw new Error('Invalid signed transaction: missing type')
+        }
         txn = stxn.txn
         isAlreadySigned =
           stxn.sig !== undefined || stxn.lsig !== undefined || stxn.msig !== undefined
       } catch {
-        txn = algosdk.decodeUnsignedTransaction(txnBytes)
+        txn = decodeUnsignedTxn(txnBytes)
         isAlreadySigned = false
       }
 
-      const sender = algosdk.encodeAddress(txn.sender.publicKey)
+      const sender = txn.sender.toString()
 
       if (facilitatorAddresses.includes(sender)) {
         // Sign fee payer transaction
-        const unsignedTxn = txn.toByte()
+        const unsignedTxn = encodeTransactionRaw(txn)
         const signedTxn = await this.signer.signTransaction(unsignedTxn, sender)
         signedTxns.push(signedTxn)
       } else if (isAlreadySigned) {
@@ -261,8 +274,8 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
 
       // Get the payment transaction ID
       const paymentTxnBytes = signedTxns[paymentIndex]
-      const paymentStxn = algosdk.decodeSignedTransaction(paymentTxnBytes)
-      const paymentTxId = paymentStxn.txn.txID()
+      const paymentStxn = decodeSignedTxn(paymentTxnBytes)
+      const paymentTxId = paymentStxn.txn.txId()
 
       return {
         success: true,
@@ -295,19 +308,26 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
   private decodeTransactionGroup(
     paymentGroup: string[],
     facilitatorAddresses: readonly string[],
-  ): { txns: algosdk.SignedTransaction[] } | { error: VerifyResponse } {
-    const txns: algosdk.SignedTransaction[] = []
+  ): { txns: SignedTransaction[] } | { error: VerifyResponse } {
+    const txns: SignedTransaction[] = []
 
     for (let i = 0; i < paymentGroup.length; i++) {
       try {
         const bytes = decodeTransaction(paymentGroup[i])
 
         try {
-          txns.push(algosdk.decodeSignedTransaction(bytes))
+          const stxn = decodeSignedTxn(bytes)
+          // Validate that decoding actually produced a valid signed transaction.
+          // algokit-utils decodeSignedTransaction is lenient and may succeed on raw unsigned
+          // bytes, returning a transaction with type "unknown" and missing fields.
+          if (!stxn.txn.type || stxn.txn.type === 'unknown') {
+            throw new Error('Invalid signed transaction: missing type')
+          }
+          txns.push(stxn)
         } catch {
           // Unsigned transaction — only the facilitator's fee payer txn should be unsigned
-          const unsignedTxn = algosdk.decodeUnsignedTransaction(bytes)
-          const sender = algosdk.encodeAddress(unsignedTxn.sender.publicKey)
+          const unsignedTxn = decodeUnsignedTxn(bytes)
+          const sender = unsignedTxn.sender.toString()
 
           if (!facilitatorAddresses.includes(sender)) {
             return {
@@ -318,8 +338,9 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
             }
           }
 
-          const encodedForSimulate = algosdk.encodeUnsignedSimulateTransaction(unsignedTxn)
-          txns.push(algosdk.decodeSignedTransaction(encodedForSimulate))
+          // Wrap unsigned txn for simulation (empty signature)
+          const encodedForSimulate = encodeSignedTransaction({ txn: unsignedTxn })
+          txns.push(decodeSignedTxn(encodedForSimulate))
         }
       } catch {
         return {
@@ -359,7 +380,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
    * @returns Signed transaction bytes or an error response
    */
   private async prepareSignedGroup(
-    decodedTxns: algosdk.SignedTransaction[],
+    decodedTxns: SignedTransaction[],
     paymentGroup: string[],
   ): Promise<{ signedTxns: Uint8Array[] } | { error: VerifyResponse }> {
     const facilitatorAddresses = this.signer.getAddresses()
@@ -367,14 +388,14 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
 
     for (let i = 0; i < decodedTxns.length; i++) {
       const txn = decodedTxns[i].txn
-      const sender = algosdk.encodeAddress(txn.sender.publicKey)
+      const sender = txn.sender.toString()
 
       if (facilitatorAddresses.includes(sender)) {
         const feeCheck = this.verifyFeePayerTransaction(txn)
         if (!feeCheck.isValid) return { error: feeCheck }
 
         try {
-          const signedTxn = await this.signer.signTransaction(txn.toByte(), sender)
+          const signedTxn = await this.signer.signTransaction(encodeTransactionRaw(txn), sender)
           signedTxns.push(signedTxn)
         } catch (error) {
           return {
@@ -432,11 +453,11 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
    * @param encodedTxn - Base64-encoded transaction for signature check
    * @returns Verification result
    */
-  private verifyPaymentTransaction(
-    stxn: algosdk.SignedTransaction,
+  private async verifyPaymentTransaction(
+    stxn: SignedTransaction,
     requirements: PaymentRequirements,
     encodedTxn: string,
-  ): VerifyResponse {
+  ): Promise<VerifyResponse> {
     const txn = stxn.txn
 
     // Must be an asset transfer
@@ -447,19 +468,8 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
       }
     }
 
-    // Access asset transfer properties via assetTransfer (algosdk v3 structure)
-    // In v3, asset transfer fields are nested: txn.assetTransfer.{amount, receiver, assetIndex}
-    const assetTransfer = (
-      txn as unknown as {
-        assetTransfer?: {
-          amount?: bigint
-          assetIndex?: bigint
-          receiver?: { publicKey: Uint8Array }
-          assetSender?: { publicKey: Uint8Array }
-          closeRemainderTo?: { publicKey: Uint8Array }
-        }
-      }
-    ).assetTransfer
+    // Access asset transfer properties — properly typed in algokit-utils v10
+    const assetTransfer = txn.assetTransfer
 
     if (!assetTransfer) {
       return {
@@ -478,12 +488,8 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
       }
     }
 
-    // Verify receiver address matches payTo.
-    // Note: Receiver opt-in to the asset is validated during transaction simulation —
-    // if the receiver has not opted in, simulation will fail with a clear error.
-    const receiver = assetTransfer.receiver
-      ? algosdk.encodeAddress(assetTransfer.receiver.publicKey)
-      : ''
+    // Verify receiver address matches payTo
+    const receiver = assetTransfer.receiver ? assetTransfer.receiver.toString() : ''
 
     if (receiver !== requirements.payTo) {
       return {
@@ -493,7 +499,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
     }
 
     // Verify asset
-    const assetId = assetTransfer.assetIndex?.toString() ?? ''
+    const assetId = assetTransfer.assetId?.toString() ?? ''
 
     if (assetId !== requirements.asset) {
       return {
@@ -513,13 +519,8 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
 
     // Verify the ed25519 signature was actually made by the sender
     if (stxn.sig) {
-      const rawTxnBytes = txn.toByte()
-      const signedMsg = new Uint8Array(2 + rawTxnBytes.length)
-      signedMsg[0] = 0x54 // 'T'
-      signedMsg[1] = 0x58 // 'X'
-      signedMsg.set(rawTxnBytes, 2)
-
-      const isValidSig = ed25519.verify(stxn.sig, signedMsg, txn.sender.publicKey)
+      const signedMsg = bytesForSigning.transaction(txn)
+      const isValidSig = await ed25519Verifier(stxn.sig, signedMsg, txn.sender.publicKey)
       if (!isValidSig) {
         return {
           isValid: false,
@@ -537,7 +538,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
    * @param txn - The fee payer transaction to validate
    * @returns Verification result
    */
-  private verifyFeePayerTransaction(txn: algosdk.Transaction): VerifyResponse {
+  private verifyFeePayerTransaction(txn: Transaction): VerifyResponse {
     // Must be a payment transaction (for fee payment)
     if (txn.type !== 'pay') {
       return {
@@ -546,17 +547,8 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
       }
     }
 
-    // Access payment transaction properties via payment (algosdk v3 structure)
-    // In v3, payment fields are nested: txn.payment.{amount, receiver, closeRemainderTo}
-    const paymentFields = (
-      txn as unknown as {
-        payment?: {
-          amount?: bigint
-          receiver?: { publicKey: Uint8Array }
-          closeRemainderTo?: { publicKey: Uint8Array }
-        }
-      }
-    ).payment
+    // Access payment fields — properly typed in algokit-utils v10
+    const paymentFields = txn.payment
 
     // Must have zero amount (self-payment for fee coverage)
     const payAmount = paymentFields?.amount ?? BigInt(0)
@@ -569,8 +561,8 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
 
     // Must be self-payment (receiver == sender)
     if (paymentFields?.receiver) {
-      const receiverAddr = algosdk.encodeAddress(paymentFields.receiver.publicKey)
-      const senderAddr = algosdk.encodeAddress(txn.sender.publicKey)
+      const receiverAddr = paymentFields.receiver.toString()
+      const senderAddr = txn.sender.toString()
       if (receiverAddr !== senderAddr) {
         return {
           isValid: false,
@@ -618,13 +610,13 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
    * @param txns - Signed transactions to check for security violations
    * @returns Verification result
    */
-  private verifySecurityConstraints(txns: algosdk.SignedTransaction[]): VerifyResponse {
+  private verifySecurityConstraints(txns: SignedTransaction[]): VerifyResponse {
     // Track rekey operations to detect sandwich patterns
     const rekeyOperations: Array<{ index: number; from: string; to: string }> = []
 
     for (let i = 0; i < txns.length; i++) {
       const txn = txns[i].txn
-      const sender = algosdk.encodeAddress(txn.sender.publicKey)
+      const sender = txn.sender.toString()
 
       // Check for keyreg transaction type - not allowed
       if (txn.type === 'keyreg') {
@@ -636,7 +628,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
 
       // Check for rekey
       if (txn.rekeyTo) {
-        const rekeyTo = algosdk.encodeAddress(txn.rekeyTo.publicKey)
+        const rekeyTo = txn.rekeyTo.toString()
         rekeyOperations.push({ index: i, from: sender, to: rekeyTo })
       }
 
@@ -645,15 +637,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
 
       // For payment transactions - check CloseRemainderTo
       if (txn.type === 'pay') {
-        const paymentFields = (
-          txn as unknown as {
-            payment?: {
-              closeRemainderTo?: { publicKey: Uint8Array }
-            }
-          }
-        ).payment
-
-        if (paymentFields?.closeRemainderTo) {
+        if (txn.payment?.closeRemainderTo) {
           return {
             isValid: false,
             invalidReason: `${VerifyErrorReason.SECURITY_CLOSE_TO_NOT_ALLOWED}: Transaction at index ${i} has CloseRemainderTo set`,
@@ -663,15 +647,7 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
 
       // For asset transfer transactions - check AssetCloseTo
       if (txn.type === 'axfer') {
-        const assetTransfer = (
-          txn as unknown as {
-            assetTransfer?: {
-              closeTo?: { publicKey: Uint8Array }
-            }
-          }
-        ).assetTransfer
-
-        if (assetTransfer?.closeTo) {
+        if (txn.assetTransfer?.closeRemainderTo) {
           return {
             isValid: false,
             invalidReason: `${VerifyErrorReason.SECURITY_CLOSE_TO_NOT_ALLOWED}: Transaction at index ${i} has AssetCloseTo set`,

@@ -6,25 +6,29 @@
  * ## Architecture
  *
  * This package provides interfaces and utilities. Signer implementations should be
- * created by integrators using algosdk directly. See the examples for reference implementations.
+ * created by integrators using @algorandfoundation/algokit-utils. See the examples for reference implementations.
  *
  * @example Client signer implementation:
  * ```typescript
- * import algosdk from "algosdk";
+ * import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
+ * import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
+ * import { decodeTransaction, encodeTransactionRaw } from "@algorandfoundation/algokit-utils/transact";
  * import type { ClientAvmSigner } from "@x402/avm";
  *
  * const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, 'base64');
- * const address = algosdk.encodeAddress(secretKey.slice(32));
+ * const seed = secretKey.slice(0, 32);
+ * const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
+ * const address = encodeAddress(ed25519Pubkey);
  *
  * const signer: ClientAvmSigner = {
  *   address,
  *   signTransactions: async (txns, indexesToSign) => {
- *     return txns.map((txn, i) => {
+ *     return Promise.all(txns.map(async (txn, i) => {
  *       if (indexesToSign && !indexesToSign.includes(i)) return null;
- *       const decoded = algosdk.decodeUnsignedTransaction(txn);
- *       const signed = algosdk.signTransaction(decoded, secretKey);
- *       return signed.blob;
- *     });
+ *       const decoded = decodeTransaction(txn);
+ *       const sig = await rawEd25519Signer(encodeTransactionRaw(decoded));
+ *       return encodeTransactionRaw({ ...decoded, sig } as any);
+ *     }));
  *   },
  * };
  * ```
