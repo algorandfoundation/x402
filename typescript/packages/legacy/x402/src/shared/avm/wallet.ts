@@ -2,7 +2,6 @@ import { Buffer } from "buffer";
 import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
 import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
 import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
-import { seedFromMnemonic, secretKeyToMnemonic } from "@algorandfoundation/algokit-utils/algo25";
 import {
   decodeTransaction as decodeUnsignedTransaction,
   bytesForSigning,
@@ -84,26 +83,16 @@ function resolveAlgodClient(network: SupportedAvmNetwork, options?: AlgodClientO
 }
 
 /**
- * Derives an Algorand account from a secret key or mnemonic.
+ * Derives an Algorand account from a hex-encoded secret key.
  *
- * @param secret - The secret key (hex string) or mnemonic phrase
+ * @param secret - The secret key as a hex string (with or without 0x prefix)
  * @returns The derived Algorand account with address, seed, and signing function
  */
 function deriveAccount(secret: string) {
   const trimmed = secret.trim();
-  let seed: Uint8Array;
-
-  if (trimmed.split(/\s+/).length === 25) {
-    // It's a mnemonic
-    seed = seedFromMnemonic(trimmed);
-  } else {
-    // It's a hex-encoded secret key
-    const normalized = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
-    const secretKey = new Uint8Array(Buffer.from(normalized, "hex"));
-    // Convert to mnemonic and back to get the seed
-    const mnemonic = secretKeyToMnemonic(secretKey);
-    seed = seedFromMnemonic(mnemonic);
-  }
+  const normalized = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
+  const secretKey = new Uint8Array(Buffer.from(normalized, "hex"));
+  const seed = secretKey.slice(0, 32);
 
   const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
   const address = encodeAddress(ed25519Pubkey);
@@ -208,15 +197,4 @@ export function createSignerFromSeed(seed: Uint8Array): AvmSigner {
   const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
   const address = encodeAddress(ed25519Pubkey);
   return createSignerFromDerivedAccount({ addr: address, rawEd25519Signer });
-}
-
-/**
- * Creates an AVM signer from a mnemonic
- *
- * @param mnemonic - The 25-word Algorand mnemonic phrase
- * @returns An AvmSigner that signs transactions using the derived account
- */
-export async function createSignerFromMnemonic(mnemonic: string): Promise<AvmSigner> {
-  const seed = seedFromMnemonic(mnemonic);
-  return createSignerFromSeed(seed);
 }
