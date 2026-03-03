@@ -77,21 +77,17 @@ function resolveAlgodClient(network: SupportedAvmNetwork, options?: AlgodClientO
 }
 
 /**
- * Derives an Algorand account from a secret key or mnemonic.
+ * Derives an Algorand account from a hex-encoded secret key.
  *
- * @param secret - The secret key (hex string) or mnemonic phrase
+ * @param secret - The secret key as a hex string (with or without 0x prefix)
  * @returns The derived Algorand account with address and secret key
  */
 function deriveAccount(secret: string) {
   const trimmed = secret.trim();
-  if (trimmed.split(/\s+/).length === 25) {
-    return algosdk.mnemonicToSecretKey(trimmed);
-  }
-
   const normalized = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
   const secretKey = new Uint8Array(Buffer.from(normalized, "hex"));
-  const mnemonic = algosdk.secretKeyToMnemonic(secretKey);
-  return algosdk.mnemonicToSecretKey(mnemonic);
+  const addr = algosdk.encodeAddress(secretKey.slice(32));
+  return { addr, sk: secretKey };
 }
 
 /**
@@ -117,7 +113,7 @@ export function createAlgorandClient(
  * Creates a wallet account that can sign Algorand transactions.
  *
  * @param network - The Algorand network to connect to
- * @param secret - The secret key (hex string) or mnemonic phrase for the account
+ * @param secret - The secret key as a hex string (with or without 0x prefix)
  * @param options - Optional configuration for the Algorand client
  * @returns A WalletAccount object that can sign transactions
  */
@@ -144,43 +140,4 @@ export function createSigner(
       });
     },
   };
-}
-
-/**
- * Creates an AVM signer from an algosdk account
- *
- * @param account - The algosdk Account to create a signer from
- * @returns An AvmSigner that signs transactions using the account's secret key
- */
-export function createSignerFromAccount(account: algosdk.Account): AvmSigner {
-  return {
-    address: account.addr.toString(),
-    async signTransactions(txns: Uint8Array[], indexesToSign?: number[]) {
-      const indexes = indexesToSign ?? txns.map((_, i) => i);
-      const signed: (Uint8Array | null)[] = [];
-
-      for (let i = 0; i < txns.length; i++) {
-        if (indexes.includes(i)) {
-          const decodedTxn = algosdk.decodeUnsignedTransaction(txns[i]);
-          const signedTxn = algosdk.signTransaction(decodedTxn, account.sk);
-          signed.push(signedTxn.blob);
-        } else {
-          signed.push(null);
-        }
-      }
-
-      return signed;
-    },
-  };
-}
-
-/**
- * Creates an AVM signer from a mnemonic
- *
- * @param mnemonic - The 25-word Algorand mnemonic phrase
- * @returns An AvmSigner that signs transactions using the derived account
- */
-export async function createSignerFromMnemonic(mnemonic: string): Promise<AvmSigner> {
-  const account = algosdk.mnemonicToSecretKey(mnemonic);
-  return createSignerFromAccount(account);
 }
