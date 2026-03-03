@@ -604,19 +604,15 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
    *
    * Security checks:
    * 1. No keyreg (key registration) transactions allowed
-   * 2. No rekey transactions allowed (unless it's a rekey+rekey-back sandwich)
+   * 2. No rekey transactions allowed
    * 3. No close-to or close-remainder-to fields allowed on any transaction
    *
    * @param txns - Signed transactions to check for security violations
    * @returns Verification result
    */
   private verifySecurityConstraints(txns: SignedTransaction[]): VerifyResponse {
-    // Track rekey operations to detect sandwich patterns
-    const rekeyOperations: Array<{ index: number; from: string; to: string }> = []
-
     for (let i = 0; i < txns.length; i++) {
       const txn = txns[i].txn
-      const sender = txn.sender.toString()
 
       // Check for keyreg transaction type - not allowed
       if (txn.type === 'keyreg') {
@@ -626,10 +622,12 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
         }
       }
 
-      // Check for rekey
+      // Check for rekey - not allowed on any transaction
       if (txn.rekeyTo) {
-        const rekeyTo = txn.rekeyTo.toString()
-        rekeyOperations.push({ index: i, from: sender, to: rekeyTo })
+        return {
+          isValid: false,
+          invalidReason: `${VerifyErrorReason.SECURITY_REKEY_NOT_ALLOWED}: Transaction at index ${i} has rekeyTo set`,
+        }
       }
 
       // Check for close-to fields based on transaction type
@@ -651,44 +649,6 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
           return {
             isValid: false,
             invalidReason: `${VerifyErrorReason.SECURITY_CLOSE_TO_NOT_ALLOWED}: Transaction at index ${i} has AssetCloseTo set`,
-          }
-        }
-      }
-    }
-
-    // Validate rekey operations - only allow sandwich patterns
-    // A sandwich pattern: rekey A->B followed by rekey back to A (same sender)
-    if (rekeyOperations.length > 0) {
-      // Must have an even number of rekey operations for sandwiches
-      if (rekeyOperations.length % 2 !== 0) {
-        return {
-          isValid: false,
-          invalidReason: `${VerifyErrorReason.SECURITY_REKEY_NOT_ALLOWED}: Unbalanced rekey operations detected`,
-        }
-      }
-
-      // Group rekey operations by sender and verify each pair forms a sandwich
-      const rekeysBySender = new Map<string, typeof rekeyOperations>()
-      for (const op of rekeyOperations) {
-        const existing = rekeysBySender.get(op.from) ?? []
-        existing.push(op)
-        rekeysBySender.set(op.from, existing)
-      }
-
-      for (const [sender, ops] of rekeysBySender) {
-        if (ops.length !== 2) {
-          return {
-            isValid: false,
-            invalidReason: `${VerifyErrorReason.SECURITY_REKEY_NOT_ALLOWED}: Sender ${sender} has ${ops.length} rekey operations, expected 2 for sandwich`,
-          }
-        }
-
-        // The second rekey's "to" should be the sender (returning authority to self)
-        const [first, second] = ops
-        if (second.to !== sender && first.to !== second.to) {
-          return {
-            isValid: false,
-            invalidReason: `${VerifyErrorReason.SECURITY_REKEY_NOT_ALLOWED}: Rekey operations for ${sender} do not form a valid sandwich pattern`,
           }
         }
       }
