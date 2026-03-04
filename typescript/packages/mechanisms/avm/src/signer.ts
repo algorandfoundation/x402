@@ -2,35 +2,38 @@
  * AVM (Algorand) Signer Interfaces for x402 Payment Protocol
  *
  * This module defines the signer interfaces for client and facilitator operations.
- * Implementations should be provided by the integrator using @algorandfoundation/algokit-utils.
+ * Use the `toClientAvmSigner` and `toFacilitatorAvmSigner` helper functions to create
+ * signers from a Base64-encoded private key.
  *
- * @example Client implementation with algokit-utils:
+ * @example Client signer:
  * ```typescript
- * import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
- * import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
- * import { decodeTransaction, encodeTransactionRaw } from "@algorandfoundation/algokit-utils/transact";
- * import type { ClientAvmSigner } from "@x402/avm";
+ * import { toClientAvmSigner } from "@x402/avm";
  *
- * const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, 'base64');
- * const seed = secretKey.slice(0, 32);
- * const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
- * const address = encodeAddress(ed25519Pubkey);
+ * const signer = toClientAvmSigner(process.env.AVM_PRIVATE_KEY!);
+ * ```
  *
- * const signer: ClientAvmSigner = {
- *   address,
- *   signTransactions: async (txns, indexesToSign) => {
- *     return Promise.all(txns.map(async (txn, i) => {
- *       if (indexesToSign && !indexesToSign.includes(i)) return null;
- *       const decoded = decodeTransaction(txn);
- *       const sig = await rawEd25519Signer(encodeTransactionRaw(decoded));
- *       return encodeTransactionRaw({ ...decoded, sig } as any);
- *     }));
- *   },
- * };
+ * @example Facilitator signer:
+ * ```typescript
+ * import { toFacilitatorAvmSigner } from "@x402/avm";
+ *
+ * const signer = toFacilitatorAvmSigner(process.env.AVM_PRIVATE_KEY!);
  * ```
  */
 
+import { AlgorandClient } from '@algorandfoundation/algokit-utils/algorand-client'
+import { encodeAddress } from '@algorandfoundation/algokit-utils/common'
+import { ed25519Generator } from '@algorandfoundation/algokit-utils/crypto'
+import {
+  decodeTransaction,
+  bytesForSigning,
+  encodeSignedTransaction,
+} from '@algorandfoundation/algokit-utils/transact'
+import { waitForConfirmation } from '@algorandfoundation/algokit-utils/transaction'
 import type { Network } from '@x402/core/types'
+import {
+  ALGORAND_TESTNET_CAIP2,
+  V1_ALGORAND_TESTNET,
+} from './constants'
 
 /**
  * Client-side signer interface for Algorand wallets
@@ -81,31 +84,11 @@ export interface ClientAvmConfig {
  * Used by the facilitator to verify and settle payments.
  * Supports multiple addresses for load balancing and key rotation.
  *
- * @example Implementation with algokit-utils:
+ * @example Using the helper function:
  * ```typescript
- * import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
- * import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
- * import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
- * import type { FacilitatorAvmSigner } from "@x402/avm";
+ * import { toFacilitatorAvmSigner } from "@x402/avm";
  *
- * const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, 'base64');
- * const seed = secretKey.slice(0, 32);
- * const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
- * const address = encodeAddress(ed25519Pubkey);
- * const algodClient = new AlgodClient({ baseUrl: "https://testnet-api.algonode.cloud" });
- *
- * const signer: FacilitatorAvmSigner = {
- *   getAddresses: () => [address],
- *   signTransaction: async (txn, senderAddress) => {
- *     const decoded = decodeTransaction(txn);
- *     const sig = await rawEd25519Signer(encodeTransactionRaw(decoded));
- *     return encodeSignedTransaction({ txn: decoded, sig });
- *   },
- *   getAlgodClient: (network) => algodClient,
- *   simulateTransactions: async (txns, network) => { ... },
- *   sendTransactions: async (signedTxns, network) => { ... },
- *   waitForConfirmation: async (txId, network, waitRounds) => { ... },
- * };
+ * const signer = toFacilitatorAvmSigner(process.env.AVM_PRIVATE_KEY!);
  * ```
  */
 export interface FacilitatorAvmSigner {
@@ -197,4 +180,161 @@ export function isAvmSignerWallet(wallet: unknown): wallet is ClientAvmSigner {
     'signTransactions' in wallet &&
     typeof (wallet as ClientAvmSigner).signTransactions === 'function'
   )
+}
+
+/**
+ * Decodes a Base64-encoded 64-byte private key into address and raw Ed25519 signer.
+ *
+ * @param privateKeyBase64 - Base64-encoded 64-byte key (32-byte seed + 32-byte public key)
+ * @returns Address and raw Ed25519 signer function
+ */
+function decodePrivateKey(privateKeyBase64: string) {
+  const secretKey = Buffer.from(privateKeyBase64, 'base64')
+  if (secretKey.length !== 64) {
+    throw new Error(
+      'AVM private key must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)',
+    )
+  }
+  const seed = secretKey.slice(0, 32)
+  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed)
+  const address = encodeAddress(ed25519Pubkey)
+  return { address, rawEd25519Signer }
+}
+
+/**
+ * Creates a ClientAvmSigner from a Base64-encoded private key.
+ *
+ * This is the recommended way to create a client-side AVM signer for x402 payments.
+ *
+ * @param privateKeyBase64 - Base64-encoded 64-byte key (32-byte seed + 32-byte public key)
+ * @returns A complete ClientAvmSigner ready for use with ExactAvmScheme
+ *
+ * @example
+ * ```typescript
+ * import { toClientAvmSigner } from "@x402/avm";
+ * import { ExactAvmScheme } from "@x402/avm/exact/client";
+ *
+ * const signer = toClientAvmSigner(process.env.AVM_PRIVATE_KEY!);
+ * client.register("algorand:*", new ExactAvmScheme(signer));
+ * ```
+ */
+export function toClientAvmSigner(privateKeyBase64: string): ClientAvmSigner {
+  const { address, rawEd25519Signer } = decodePrivateKey(privateKeyBase64)
+
+  return {
+    address,
+    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
+      return Promise.all(
+        txns.map(async (txn, i) => {
+          if (indexesToSign && !indexesToSign.includes(i)) return null
+          const decoded = decodeTransaction(txn)
+          const msg = bytesForSigning.transaction(decoded)
+          const sig = await rawEd25519Signer(msg)
+          return encodeSignedTransaction({ txn: decoded, sig })
+        }),
+      )
+    },
+  }
+}
+
+/**
+ * Determines if a network identifier refers to testnet.
+ */
+function isTestnet(network: string): boolean {
+  return network === ALGORAND_TESTNET_CAIP2 || network === V1_ALGORAND_TESTNET
+}
+
+/**
+ * Creates a FacilitatorAvmSigner from a Base64-encoded private key.
+ *
+ * This is the recommended way to create a facilitator-side AVM signer for x402 payments.
+ * Uses `AlgorandClient.testNet()` / `AlgorandClient.mainNet()` from AlgoKit Utils for
+ * network connectivity, with optional URL overrides via config.
+ *
+ * @param privateKeyBase64 - Base64-encoded 64-byte key (32-byte seed + 32-byte public key)
+ * @param config - Optional configuration for custom Algod URLs
+ * @returns A complete FacilitatorAvmSigner ready for use with ExactAvmScheme
+ *
+ * @example
+ * ```typescript
+ * import { toFacilitatorAvmSigner } from "@x402/avm";
+ * import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
+ *
+ * // Default (AlgoNode endpoints):
+ * const signer = toFacilitatorAvmSigner(process.env.AVM_PRIVATE_KEY!);
+ *
+ * // With custom URLs:
+ * const signer = toFacilitatorAvmSigner(process.env.AVM_PRIVATE_KEY!, {
+ *   testnetUrl: "https://my-testnet-node.example.com",
+ *   mainnetUrl: "https://my-mainnet-node.example.com",
+ * });
+ *
+ * facilitator.register("algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=", new ExactAvmScheme(signer));
+ * ```
+ */
+export function toFacilitatorAvmSigner(
+  privateKeyBase64: string,
+  config?: FacilitatorAvmSignerConfig,
+): FacilitatorAvmSigner {
+  const { address, rawEd25519Signer } = decodePrivateKey(privateKeyBase64)
+
+  // Create AlgorandClient instances for each network, with optional URL overrides
+  const getAlgorandClientForNetwork = (network: string) => {
+    if (isTestnet(network)) {
+      if (config?.testnetUrl) {
+        return AlgorandClient.fromConfig({
+          algodConfig: { server: config.testnetUrl, token: config.algodToken ?? '' },
+        })
+      }
+      return AlgorandClient.testNet()
+    }
+    if (config?.mainnetUrl) {
+      return AlgorandClient.fromConfig({
+        algodConfig: { server: config.mainnetUrl, token: config.algodToken ?? '' },
+      })
+    }
+    return AlgorandClient.mainNet()
+  }
+
+  // Cache AlgorandClient instances per network
+  const clientCache = new Map<string, ReturnType<typeof AlgorandClient.testNet>>()
+
+  const getClient = (network: string) => {
+    const key = isTestnet(network) ? 'testnet' : 'mainnet'
+    let client = clientCache.get(key)
+    if (!client) {
+      client = getAlgorandClientForNetwork(network)
+      clientCache.set(key, client)
+    }
+    return client
+  }
+
+  return {
+    getAddresses: () => [address] as readonly string[],
+
+    signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
+      const decoded = decodeTransaction(txn)
+      const msg = bytesForSigning.transaction(decoded)
+      const sig = await rawEd25519Signer(msg)
+      return encodeSignedTransaction({ txn: decoded, sig })
+    },
+
+    getAlgodClient: (network: string) => getClient(network).client.algod,
+
+    simulateTransactions: async (txns: Uint8Array[], network: string) => {
+      const algod = getClient(network).client.algod
+      return await algod.simulateRawTransactions(txns)
+    },
+
+    sendTransactions: async (signedTxns: Uint8Array[], network: string) => {
+      const algod = getClient(network).client.algod
+      const response = await algod.sendRawTransaction(signedTxns)
+      return response.txId
+    },
+
+    waitForConfirmation: async (txId: string, network: string, waitRounds: number = 4) => {
+      const algod = getClient(network).client.algod
+      return await waitForConfirmation(txId, waitRounds, algod)
+    },
+  }
 }

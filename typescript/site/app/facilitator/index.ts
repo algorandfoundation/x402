@@ -11,16 +11,7 @@ import { ExactEvmSchemeV1 } from "@x402/evm/exact/v1/facilitator";
 import { toFacilitatorSvmSigner } from "@x402/svm";
 import { ExactSvmScheme } from "@x402/svm/exact/facilitator";
 import { ExactSvmSchemeV1 } from "@x402/svm/exact/v1/facilitator";
-import { DEFAULT_ALGOD_TESTNET } from "@x402/avm";
-import { AlgodClient } from "@algorandfoundation/algokit-utils/algod-client";
-import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
-import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
-import {
-  decodeTransaction,
-  bytesForSigning,
-  encodeSignedTransaction,
-} from "@algorandfoundation/algokit-utils/transact";
-import { waitForConfirmation } from "@algorandfoundation/algokit-utils/transaction";
+import { toFacilitatorAvmSigner } from "@x402/avm";
 import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
 import { ExactAvmSchemeV1 } from "@x402/avm/exact/v1/facilitator";
 import { createWalletClient, http, publicActions } from "viem";
@@ -108,44 +99,8 @@ async function createFacilitator(): Promise<x402Facilitator> {
   // Initialize SVM signer - handles all Solana networks with automatic RPC creation
   const svmSigner = toFacilitatorSvmSigner(svmAccount);
 
-  // Initialize the AVM account from private key
-  const secretKey = Buffer.from(avmPrivateKey, "base64");
-  if (secretKey.length !== 64) {
-    throw new Error(
-      "FACILITATOR_AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)",
-    );
-  }
-  const seed = secretKey.slice(0, 32);
-  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
-  const avmAddress = encodeAddress(ed25519Pubkey);
-  const algodClient = new AlgodClient({ baseUrl: DEFAULT_ALGOD_TESTNET });
-
-  // Initialize AVM signer
-  const avmSigner = {
-    getAddresses: () => [avmAddress] as readonly string[],
-
-    signTransaction: async (txn: Uint8Array, _: string) => {
-      const decoded = decodeTransaction(txn);
-      const msg = bytesForSigning.transaction(decoded);
-      const sig = await rawEd25519Signer(msg);
-      return encodeSignedTransaction({ txn: decoded, sig });
-    },
-
-    getAlgodClient: (_: string) => algodClient,
-
-    simulateTransactions: async (txns: Uint8Array[], _: string) => {
-      return await algodClient.simulateRawTransactions(txns);
-    },
-
-    sendTransactions: async (signedTxns: Uint8Array[], _: string) => {
-      const response = await algodClient.sendRawTransaction(signedTxns);
-      return response.txId;
-    },
-
-    waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
-      return await waitForConfirmation(txId, waitRounds, algodClient);
-    },
-  };
+  // Initialize the AVM signer from private key
+  const avmSigner = toFacilitatorAvmSigner(avmPrivateKey);
 
   // Create and configure the facilitator with all networks
   const facilitator = new x402Facilitator()

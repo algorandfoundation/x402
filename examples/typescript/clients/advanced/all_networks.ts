@@ -10,16 +10,10 @@
 
 import { config } from "dotenv";
 import { x402Client, wrapFetchWithPayment, x402HTTPClient } from "@x402/fetch";
+import { toClientAvmSigner } from "@x402/avm";
 import { ExactAvmScheme } from "@x402/avm/exact/client";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
-import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
-import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
-import {
-  decodeTransaction,
-  bytesForSigning,
-  encodeSignedTransaction,
-} from "@algorandfoundation/algokit-utils/transact";
 import { base58 } from "@scure/base";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { privateKeyToAccount } from "viem/accounts";
@@ -50,26 +44,9 @@ async function main(): Promise<void> {
 
   // Register AVM scheme if private key is provided
   if (avmPrivateKey) {
-    const avmSecretKey = Buffer.from(avmPrivateKey, "base64");
-    const avmSeed = avmSecretKey.slice(0, 32);
-    const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(avmSeed);
-    const avmAddress = encodeAddress(ed25519Pubkey);
-    const avmSigner = {
-      address: avmAddress,
-      signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-        return Promise.all(
-          txns.map(async (txn, i) => {
-            if (indexesToSign && !indexesToSign.includes(i)) return null;
-            const decoded = decodeTransaction(txn);
-            const msg = bytesForSigning.transaction(decoded);
-            const sig = await rawEd25519Signer(msg);
-            return encodeSignedTransaction({ txn: decoded, sig });
-          }),
-        );
-      },
-    };
+    const avmSigner = toClientAvmSigner(avmPrivateKey);
     client.register("algorand:*", new ExactAvmScheme(avmSigner));
-    console.log(`Initialized AVM account: ${avmAddress}`);
+    console.log(`Initialized AVM account: ${avmSigner.address}`);
   }
 
   // Register EVM scheme if private key is provided

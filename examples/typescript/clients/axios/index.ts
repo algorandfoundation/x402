@@ -2,17 +2,11 @@ import { config } from "dotenv";
 import { x402Client, wrapAxiosWithPayment, x402HTTPClient } from "@x402/axios";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { registerExactSvmScheme } from "@x402/svm/exact/client";
+import { toClientAvmSigner } from "@x402/avm";
 import { registerExactAvmScheme } from "@x402/avm/exact/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { base58 } from "@scure/base";
-import { encodeAddress } from "@algorandfoundation/algokit-utils/common";
-import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
-import {
-  decodeTransaction,
-  bytesForSigning,
-  encodeSignedTransaction,
-} from "@algorandfoundation/algokit-utils/transact";
 import axios from "axios";
 
 config();
@@ -39,33 +33,13 @@ async function main(): Promise<void> {
   const evmSigner = privateKeyToAccount(evmPrivateKey);
   const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
 
-  const secretKey = Buffer.from(avmPrivateKey, "base64");
-  if (secretKey.length !== 64) {
-    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
-  }
-  const seed = secretKey.slice(0, 32);
-  const { ed25519Pubkey, rawEd25519Signer } = ed25519Generator(seed);
-  const address = encodeAddress(ed25519Pubkey);
-  const avmSigner = {
-    address,
-    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return Promise.all(
-        txns.map(async (txn, i) => {
-          if (indexesToSign && !indexesToSign.includes(i)) return null;
-          const decoded = decodeTransaction(txn);
-          const msg = bytesForSigning.transaction(decoded);
-          const sig = await rawEd25519Signer(msg);
-          return encodeSignedTransaction({ txn: decoded, sig });
-        }),
-      );
-    },
-  };
+  const avmSigner = toClientAvmSigner(avmPrivateKey);
 
   const client = new x402Client();
   registerExactEvmScheme(client, { signer: evmSigner });
   registerExactSvmScheme(client, { signer: svmSigner });
   registerExactAvmScheme(client, { signer: avmSigner });
-  console.info(`AVM signer: ${address}`);
+  console.info(`AVM signer: ${avmSigner.address}`);
 
   const api = wrapAxiosWithPayment(axios.create(), client);
 
