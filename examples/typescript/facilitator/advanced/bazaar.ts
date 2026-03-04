@@ -5,7 +5,7 @@
  * catalogs discovered x402 resources.
  */
 
-import { DEFAULT_ALGOD_TESTNET } from "@x402/avm";
+import { toFacilitatorAvmSigner } from "@x402/avm";
 import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
 import { x402Facilitator } from "@x402/core/facilitator";
 import {
@@ -19,7 +19,6 @@ import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { extractDiscoveryInfo, DiscoveryInfo } from "@x402/extensions/bazaar";
 import { toFacilitatorSvmSigner } from "@x402/svm";
 import { ExactSvmScheme } from "@x402/svm/exact/facilitator";
-import algosdk from "algosdk";
 import { base58 } from "@scure/base";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import dotenv from "dotenv";
@@ -98,7 +97,8 @@ const facilitator = new x402Facilitator()
         console.log(`   📝 Discovered resource: ${discovered.resourceUrl}`);
         console.log(`   📝 Description: ${discovered.description}`);
         console.log(`   📝 MimeType: ${discovered.mimeType}`);
-        console.log(`   📝 Method: ${discovered.method}`);
+        const method = "method" in discovered ? discovered.method : "N/A";
+        console.log(`   📝 Method: ${method}`);
         console.log(`   📝 X402Version: ${discovered.x402Version}`);
 
         bazaarCatalog.add({
@@ -132,48 +132,8 @@ const facilitator = new x402Facilitator()
 
 // Register AVM scheme if private key is provided
 if (avmPrivateKey) {
-  const avmSecretKey = Buffer.from(avmPrivateKey, "base64");
-  if (avmSecretKey.length !== 64) {
-    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)");
-  }
-  const avmAddress = algosdk.encodeAddress(avmSecretKey.slice(32));
-  console.info(`AVM Facilitator account: ${avmAddress}`);
-
-  const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
-
-  const avmSigner = {
-    getAddresses: () => [avmAddress] as readonly string[],
-
-    signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, avmSecretKey);
-      return signed.blob;
-    },
-
-    getAlgodClient: (_network: string) => algodClient,
-
-    simulateTransactions: async (txns: Uint8Array[], _network: string) => {
-      const request = new algosdk.modelsv2.SimulateRequest({
-        txnGroups: [
-          new algosdk.modelsv2.SimulateRequestTransactionGroup({
-            txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
-          }),
-        ],
-        allowUnnamedResources: true,
-      });
-      return await algodClient.simulateTransactions(request).do();
-    },
-
-    sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
-      const response = await algodClient.sendRawTransaction(signedTxns).do();
-      return response.txid;
-    },
-
-    waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
-      return await algosdk.waitForConfirmation(algodClient, txId, waitRounds);
-    },
-  };
-
+  const avmSigner = toFacilitatorAvmSigner(avmPrivateKey);
+  console.info(`AVM Facilitator account: ${avmSigner.getAddresses()[0]}`);
   facilitator.register(AVM_NETWORK, new ExactAvmScheme(avmSigner));
 }
 

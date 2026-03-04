@@ -20,12 +20,12 @@ import {
   ExactAvmScheme as ExactAvmClient,
   ALGORAND_TESTNET_CAIP2,
   USDC_TESTNET_ASA_ID,
-  DEFAULT_ALGOD_TESTNET,
+  toClientAvmSigner,
+  toFacilitatorAvmSigner,
 } from '../../src'
 import { ExactAvmScheme as ExactAvmServer } from '../../src/exact/server/scheme'
 import { ExactAvmScheme as ExactAvmFacilitator } from '../../src/exact/facilitator/scheme'
 import type { ExactAvmPayloadV2 } from '../../src/types'
-import algosdk from 'algosdk'
 
 // Load private keys from environment (Base64-encoded 64-byte keys)
 const CLIENT_PRIVATE_KEY = process.env.CLIENT_PRIVATE_KEY
@@ -37,20 +37,10 @@ if (!CLIENT_PRIVATE_KEY || !FACILITATOR_PRIVATE_KEY) {
   )
 }
 
-// Derive addresses from keys
-const clientSecretKey = Buffer.from(CLIENT_PRIVATE_KEY, 'base64')
-const facilitatorSecretKey = Buffer.from(FACILITATOR_PRIVATE_KEY, 'base64')
-
-if (clientSecretKey.length !== 64 || facilitatorSecretKey.length !== 64) {
-  throw new Error(
-    'Private keys must be Base64-encoded 64-byte keys (32-byte seed + 32-byte public key)',
-  )
-}
-
-const FACILITATOR_ADDRESS = algosdk.encodeAddress(facilitatorSecretKey.slice(32))
-
-// Create Algod client for testnet
-const algodClient = new algosdk.Algodv2('', DEFAULT_ALGOD_TESTNET, '')
+// Create signers from keys
+const clientSigner = toClientAvmSigner(CLIENT_PRIVATE_KEY)
+const facilitatorSigner = toFacilitatorAvmSigner(FACILITATOR_PRIVATE_KEY)
+const FACILITATOR_ADDRESS = facilitatorSigner.getAddresses()[0]
 
 /**
  * AVM Facilitator Client wrapper
@@ -132,62 +122,6 @@ function buildAvmPaymentRequirements(
   }
 }
 
-/**
- * Create a ClientAvmSigner from a secret key
- */
-function createClientSigner(secretKey: Buffer) {
-  const address = algosdk.encodeAddress(secretKey.slice(32))
-  return {
-    address,
-    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return txns.map((txn, i) => {
-        if (indexesToSign && !indexesToSign.includes(i)) return null
-        const decoded = algosdk.decodeUnsignedTransaction(txn)
-        const signed = algosdk.signTransaction(decoded, secretKey)
-        return signed.blob
-      })
-    },
-  }
-}
-
-/**
- * Create a FacilitatorAvmSigner from a secret key
- */
-function createFacilitatorSigner(secretKey: Buffer) {
-  const address = algosdk.encodeAddress(secretKey.slice(32))
-  return {
-    getAddresses: () => [address] as readonly string[],
-
-    signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
-      const decoded = algosdk.decodeUnsignedTransaction(txn)
-      const signed = algosdk.signTransaction(decoded, secretKey)
-      return signed.blob
-    },
-
-    getAlgodClient: (_network: string) => algodClient,
-
-    simulateTransactions: async (txns: Uint8Array[], _network: string) => {
-      const request = new algosdk.modelsv2.SimulateRequest({
-        txnGroups: [
-          new algosdk.modelsv2.SimulateRequestTransactionGroup({
-            txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
-          }),
-        ],
-        allowUnnamedResources: true,
-      })
-      return await algodClient.simulateTransactions(request).do()
-    },
-
-    sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
-      const response = await algodClient.sendRawTransaction(signedTxns).do()
-      return response.txid
-    },
-
-    waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
-      return await algosdk.waitForConfirmation(algodClient, txId, waitRounds)
-    },
-  }
-}
 
 describe('AVM Integration Tests', () => {
   describe('x402Client / x402ResourceServer / x402Facilitator - AVM Flow', () => {
@@ -196,13 +130,10 @@ describe('AVM Integration Tests', () => {
     let clientAddress: string
 
     beforeEach(async () => {
-      const clientSigner = createClientSigner(clientSecretKey)
       clientAddress = clientSigner.address
 
       const avmClient = new ExactAvmClient(clientSigner)
       client = new x402Client().register(ALGORAND_TESTNET_CAIP2, avmClient)
-
-      const facilitatorSigner = createFacilitatorSigner(facilitatorSecretKey)
 
       const avmFacilitator = new ExactAvmFacilitator(facilitatorSigner)
       const facilitator = new x402Facilitator().register(ALGORAND_TESTNET_CAIP2, avmFacilitator)
@@ -303,14 +234,10 @@ describe('AVM Integration Tests', () => {
     }
 
     beforeEach(async () => {
-      const facilitatorSigner = createFacilitatorSigner(facilitatorSecretKey)
-
       const avmFacilitator = new ExactAvmFacilitator(facilitatorSigner)
       const facilitator = new x402Facilitator().register(ALGORAND_TESTNET_CAIP2, avmFacilitator)
 
       const facilitatorClient = new AvmFacilitatorClient(facilitator)
-
-      const clientSigner = createClientSigner(clientSecretKey)
 
       const avmClient = new ExactAvmClient(clientSigner)
       const paymentClient = new x402Client().register(ALGORAND_TESTNET_CAIP2, avmClient)
@@ -408,8 +335,6 @@ describe('AVM Integration Tests', () => {
     let avmServer: ExactAvmServer
 
     beforeEach(async () => {
-      const facilitatorSigner = createFacilitatorSigner(facilitatorSecretKey)
-
       const facilitator = new x402Facilitator().register(
         ALGORAND_TESTNET_CAIP2,
         new ExactAvmFacilitator(facilitatorSigner),

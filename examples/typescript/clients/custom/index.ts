@@ -11,7 +11,7 @@ import {
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
 import { ExactAvmScheme } from "@x402/avm/exact/client";
-import algosdk from "algosdk";
+import { toClientAvmSigner } from "@x402/avm";
 import type { PaymentRequirements } from "@x402/core/types";
 
 config();
@@ -113,23 +113,8 @@ async function main(): Promise<void> {
   const evmSigner = privateKeyToAccount(evmPrivateKey);
   const solanaSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
 
-  const secretKey = Buffer.from(avmPrivateKey, "base64");
-  if (secretKey.length !== 64) {
-    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
-  }
-  const address = algosdk.encodeAddress(secretKey.slice(32));
-  const avmSigner = {
-    address,
-    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return txns.map((txn, i) => {
-        if (indexesToSign && !indexesToSign.includes(i)) return null;
-        const decoded = algosdk.decodeUnsignedTransaction(txn);
-        const signed = algosdk.signTransaction(decoded, secretKey);
-        return signed.blob;
-      });
-    },
-  };
-  console.info(`AVM signer: ${address}`);
+  const avmSigner = toClientAvmSigner(avmPrivateKey);
+  console.info(`AVM signer: ${avmSigner.address}`);
 
   // Custom selector - pick which payment option to use
   // This selects the second payment option (Solana)

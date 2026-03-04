@@ -11,9 +11,9 @@
 import { config } from "dotenv";
 import { x402Client, wrapFetchWithPayment, x402HTTPClient } from "@x402/fetch";
 import { ExactAvmScheme } from "@x402/avm/exact/client";
+import { toClientAvmSigner } from "@x402/avm";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
-import algosdk from "algosdk";
 import { base58 } from "@scure/base";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { privateKeyToAccount } from "viem/accounts";
@@ -44,21 +44,9 @@ async function main(): Promise<void> {
 
   // Register AVM scheme if private key is provided
   if (avmPrivateKey) {
-    const avmSecretKey = Buffer.from(avmPrivateKey, "base64");
-    const avmAddress = algosdk.encodeAddress(avmSecretKey.slice(32));
-    const avmSigner = {
-      address: avmAddress,
-      signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-        return txns.map((txn, i) => {
-          if (indexesToSign && !indexesToSign.includes(i)) return null;
-          const decoded = algosdk.decodeUnsignedTransaction(txn);
-          const signed = algosdk.signTransaction(decoded, avmSecretKey);
-          return signed.blob;
-        });
-      },
-    };
+    const avmSigner = toClientAvmSigner(avmPrivateKey);
     client.register("algorand:*", new ExactAvmScheme(avmSigner));
-    console.log(`Initialized AVM account: ${avmAddress}`);
+    console.log(`Initialized AVM account: ${avmSigner.address}`);
   }
 
   // Register EVM scheme if private key is provided

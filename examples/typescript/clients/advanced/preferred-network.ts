@@ -3,7 +3,7 @@ import { x402Client, type PaymentRequirements } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
 import { ExactAvmScheme } from "@x402/avm/exact/client";
-import algosdk from "algosdk";
+import { toClientAvmSigner } from "@x402/avm";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { base58 } from "@scure/base";
 import { x402HTTPClient, wrapFetchWithPayment } from "@x402/fetch";
@@ -73,22 +73,7 @@ export async function runPreferredNetworkExample(
     return options[0];
   };
 
-  const secretKey = Buffer.from(avmPrivateKey, "base64");
-  if (secretKey.length !== 64) {
-    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
-  }
-  const address = algosdk.encodeAddress(secretKey.slice(32));
-  const avmSigner = {
-    address,
-    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return txns.map((txn, i) => {
-        if (indexesToSign && !indexesToSign.includes(i)) return null;
-        const decoded = algosdk.decodeUnsignedTransaction(txn);
-        const signed = algosdk.signTransaction(decoded, secretKey);
-        return signed.blob;
-      });
-    },
-  };
+  const avmSigner = toClientAvmSigner(avmPrivateKey);
 
   const client = new x402Client(preferredNetworkSelector)
     .register("eip155:*", new ExactEvmScheme(evmSigner))

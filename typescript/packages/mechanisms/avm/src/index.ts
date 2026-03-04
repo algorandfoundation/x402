@@ -8,25 +8,18 @@
  * This package provides interfaces and utilities. Signer implementations should be
  * created by integrators using algosdk directly. See the examples for reference implementations.
  *
- * @example Client signer implementation:
+ * @example Client signer:
  * ```typescript
- * import algosdk from "algosdk";
- * import type { ClientAvmSigner } from "@x402/avm";
+ * import { toClientAvmSigner } from "@x402/avm";
  *
- * const secretKey = Buffer.from(process.env.AVM_PRIVATE_KEY!, 'base64');
- * const address = algosdk.encodeAddress(secretKey.slice(32));
+ * const signer = toClientAvmSigner(process.env.AVM_PRIVATE_KEY!);
+ * ```
  *
- * const signer: ClientAvmSigner = {
- *   address,
- *   signTransactions: async (txns, indexesToSign) => {
- *     return txns.map((txn, i) => {
- *       if (indexesToSign && !indexesToSign.includes(i)) return null;
- *       const decoded = algosdk.decodeUnsignedTransaction(txn);
- *       const signed = algosdk.signTransaction(decoded, secretKey);
- *       return signed.blob;
- *     });
- *   },
- * };
+ * @example Facilitator signer:
+ * ```typescript
+ * import { toFacilitatorAvmSigner } from "@x402/avm";
+ *
+ * const signer = toFacilitatorAvmSigner(process.env.AVM_PRIVATE_KEY!);
  * ```
  */
 
@@ -34,7 +27,7 @@
 export { ExactAvmScheme } from './exact'
 
 // Signer interfaces (implementations provided by integrator)
-export { isAvmSignerWallet } from './signer'
+export { isAvmSignerWallet, toClientAvmSigner, toFacilitatorAvmSigner } from './signer'
 export type {
   ClientAvmSigner,
   ClientAvmConfig,

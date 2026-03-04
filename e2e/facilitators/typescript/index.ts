@@ -14,10 +14,9 @@
 import { Account, Ed25519PrivateKey, PrivateKey, PrivateKeyVariants } from "@aptos-labs/ts-sdk";
 import { base58 } from "@scure/base";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
-import algosdk from "algosdk";
 import { toFacilitatorAptosSigner } from "@x402/aptos";
 import { ExactAptosScheme } from "@x402/aptos/exact/facilitator";
-import { DEFAULT_ALGOD_TESTNET } from "@x402/avm";
+import { toFacilitatorAvmSigner } from "@x402/avm";
 import { ExactAvmScheme } from "@x402/avm/exact/facilitator";
 import { ExactAvmSchemeV1 } from "@x402/avm/exact/v1/facilitator";
 import { NETWORKS as AVM_V1_NETWORKS } from "@x402/avm/v1";
@@ -98,58 +97,12 @@ console.info(`EVM Facilitator account: ${evmAccount.address}`);
 const svmAccount = await createKeyPairSignerFromBytes(base58.decode(process.env.SVM_PRIVATE_KEY as string));
 console.info(`SVM Facilitator account: ${svmAccount.address}`);
 
-// Initialize the AVM account from private key if provided
-let avmSigner: {
-  getAddresses: () => readonly string[];
-  signTransaction: (txn: Uint8Array, senderAddress: string) => Promise<Uint8Array>;
-  getAlgodClient: (network: string) => algosdk.Algodv2;
-  simulateTransactions: (txns: Uint8Array[], network: string) => Promise<unknown>;
-  sendTransactions: (signedTxns: Uint8Array[], network: string) => Promise<string>;
-  waitForConfirmation: (txId: string, network: string, waitRounds?: number) => Promise<unknown>;
-} | undefined;
+// Initialize the AVM signer from private key if provided
+let avmSigner: ReturnType<typeof toFacilitatorAvmSigner> | undefined;
 
 if (process.env.AVM_PRIVATE_KEY) {
-  const avmSecretKey = Buffer.from(process.env.AVM_PRIVATE_KEY, "base64");
-  if (avmSecretKey.length !== 64) {
-    console.error("❌ AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)");
-    process.exit(1);
-  }
-  const avmAddress = algosdk.encodeAddress(avmSecretKey.slice(32));
-  const algodClient = new algosdk.Algodv2("", DEFAULT_ALGOD_TESTNET, "");
-  console.info(`AVM Facilitator account: ${avmAddress}`);
-
-  avmSigner = {
-    getAddresses: () => [avmAddress] as readonly string[],
-
-    signTransaction: async (txn: Uint8Array, _senderAddress: string) => {
-      const decoded = algosdk.decodeUnsignedTransaction(txn);
-      const signed = algosdk.signTransaction(decoded, avmSecretKey);
-      return signed.blob;
-    },
-
-    getAlgodClient: (_network: string) => algodClient,
-
-    simulateTransactions: async (txns: Uint8Array[], _network: string) => {
-      const request = new algosdk.modelsv2.SimulateRequest({
-        txnGroups: [
-          new algosdk.modelsv2.SimulateRequestTransactionGroup({
-            txns: txns.map(txn => algosdk.decodeSignedTransaction(txn)),
-          }),
-        ],
-        allowUnnamedResources: true,
-      });
-      return await algodClient.simulateTransactions(request).do();
-    },
-
-    sendTransactions: async (signedTxns: Uint8Array[], _network: string) => {
-      const response = await algodClient.sendRawTransaction(signedTxns).do();
-      return response.txid;
-    },
-
-    waitForConfirmation: async (txId: string, _network: string, waitRounds: number = 4) => {
-      return await algosdk.waitForConfirmation(algodClient, txId, waitRounds);
-    },
-  };
+  avmSigner = toFacilitatorAvmSigner(process.env.AVM_PRIVATE_KEY);
+  console.info(`AVM Facilitator account: ${avmSigner.getAddresses()[0]}`);
 }
 
 // Initialize the Aptos account from private key (format to AIP-80 compliant format) if provided

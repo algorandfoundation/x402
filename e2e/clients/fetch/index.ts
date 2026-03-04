@@ -4,6 +4,7 @@ import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { ExactAvmScheme } from "@x402/avm/exact/client";
+import { toClientAvmSigner } from "@x402/avm";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { ExactEvmSchemeV1 } from "@x402/evm/v1";
 import { toClientEvmSigner } from "@x402/evm";
@@ -13,7 +14,6 @@ import { ExactAptosScheme } from "@x402/aptos/exact/client";
 import { Account, Ed25519PrivateKey, PrivateKey, PrivateKeyVariants } from "@aptos-labs/ts-sdk";
 import { base58 } from "@scure/base";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
-import algosdk from "algosdk";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 
 config();
@@ -45,19 +45,7 @@ const client = new x402Client();
 
 // Register AVM if key is provided
 if (process.env.AVM_PRIVATE_KEY) {
-  const avmSecretKey = Buffer.from(process.env.AVM_PRIVATE_KEY, "base64");
-  const avmAddress = algosdk.encodeAddress(avmSecretKey.slice(32));
-  const avmSigner = {
-    address: avmAddress,
-    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return txns.map((txn, i) => {
-        if (indexesToSign && !indexesToSign.includes(i)) return null;
-        const decoded = algosdk.decodeUnsignedTransaction(txn);
-        const signed = algosdk.signTransaction(decoded, avmSecretKey);
-        return signed.blob;
-      });
-    },
-  };
+  const avmSigner = toClientAvmSigner(process.env.AVM_PRIVATE_KEY);
   client.register("algorand:*", new ExactAvmScheme(avmSigner));
 }
 

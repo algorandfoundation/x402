@@ -13,10 +13,10 @@ import { x402Client, wrapAxiosWithPayment } from "@x402/axios";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { registerExactSvmScheme } from "@x402/svm/exact/client";
 import { registerExactAvmScheme } from "@x402/avm/exact/client";
+import { toClientAvmSigner } from "@x402/avm";
 import { privateKeyToAccount } from "viem/accounts";
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import { base58 } from "@scure/base";
-import algosdk from "algosdk";
 
 config();
 
@@ -44,22 +44,7 @@ async function createClient() {
   const svmSigner = await createKeyPairSignerFromBytes(base58.decode(svmPrivateKey));
   registerExactSvmScheme(client, { signer: svmSigner });
 
-  const secretKey = Buffer.from(avmPrivateKey, "base64");
-  if (secretKey.length !== 64) {
-    throw new Error("AVM_PRIVATE_KEY must be a Base64-encoded 64-byte key");
-  }
-  const address = algosdk.encodeAddress(secretKey.slice(32));
-  const avmSigner = {
-    address,
-    signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
-      return txns.map((txn, i) => {
-        if (indexesToSign && !indexesToSign.includes(i)) return null;
-        const decoded = algosdk.decodeUnsignedTransaction(txn);
-        const signed = algosdk.signTransaction(decoded, secretKey);
-        return signed.blob;
-      });
-    },
-  };
+  const avmSigner = toClientAvmSigner(avmPrivateKey);
   registerExactAvmScheme(client, { signer: avmSigner });
 
   return wrapAxiosWithPayment(axios.create({ baseURL }), client);
