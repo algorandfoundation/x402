@@ -1,7 +1,8 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { x402Client } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
-import { UptoEvmScheme } from "@x402/evm/upto/client";
+import { toClientAvmSigner } from "@x402/avm";
+import { ExactAvmScheme } from "@x402/avm/exact/client";
 
 /**
  * Hooks Example
@@ -21,14 +22,20 @@ import { UptoEvmScheme } from "@x402/evm/upto/client";
  * @param evmPrivateKey - The EVM private key for signing
  * @param url - The URL to make the request to
  */
-export async function runHooksExample(evmPrivateKey: `0x${string}`, url: string): Promise<void> {
+export async function runHooksExample(
+  evmPrivateKey: `0x${string}`,
+  avmPrivateKey: string,
+  url: string,
+): Promise<void> {
   console.log("🔧 Creating client with payment lifecycle hooks...\n");
 
   const evmSigner = privateKeyToAccount(evmPrivateKey);
 
+  const avmSigner = toClientAvmSigner(avmPrivateKey);
+
   const client = new x402Client()
     .register("eip155:*", new ExactEvmScheme(evmSigner))
-    .register("eip155:*", new UptoEvmScheme(evmSigner))
+    .register("algorand:*", new ExactAvmScheme(avmSigner))
     .onBeforePaymentCreation(async context => {
       console.log("🔍 [BeforePaymentCreation] Creating payment for:");
       console.log(`   Network: ${context.selectedRequirements.network}`);
