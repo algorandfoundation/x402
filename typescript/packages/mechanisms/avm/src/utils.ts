@@ -8,17 +8,13 @@
 import {
   decodeTransaction as decodeUnsignedTxn,
   decodeSignedTransaction as decodeSignedTxn,
-} from '@algorandfoundation/algokit-utils/transact'
-import { isValidAddress } from '@algorandfoundation/algokit-utils/common'
+} from "@algorandfoundation/algokit-utils/transact";
+import { isValidAddress } from "@algorandfoundation/algokit-utils/common";
 import {
   ALGORAND_MAINNET_GENESIS_HASH,
   ALGORAND_TESTNET_GENESIS_HASH,
   ALGORAND_TESTNET_CAIP2,
-  V1_ALGORAND_MAINNET,
-  V1_ALGORAND_TESTNET,
-  V1_TO_CAIP2,
-  CAIP2_TO_V1,
-} from './constants'
+} from "./constants";
 
 /**
  * Encodes transaction bytes to base64 string
@@ -27,7 +23,7 @@ import {
  * @returns Base64 encoded string
  */
 export function encodeTransaction(txn: Uint8Array): string {
-  return Buffer.from(txn).toString('base64')
+  return Buffer.from(txn).toString("base64");
 }
 
 /**
@@ -37,7 +33,7 @@ export function encodeTransaction(txn: Uint8Array): string {
  * @returns Transaction bytes (Uint8Array)
  */
 export function decodeTransaction(encoded: string): Uint8Array {
-  return new Uint8Array(Buffer.from(encoded, 'base64'))
+  return new Uint8Array(Buffer.from(encoded, "base64"));
 }
 
 /**
@@ -47,8 +43,8 @@ export function decodeTransaction(encoded: string): Uint8Array {
  * @returns Decoded signed transaction object
  */
 export function decodeSignedTransaction(encoded: string) {
-  const bytes = decodeTransaction(encoded)
-  return decodeSignedTxn(bytes)
+  const bytes = decodeTransaction(encoded);
+  return decodeSignedTxn(bytes);
 }
 
 /**
@@ -58,8 +54,8 @@ export function decodeSignedTransaction(encoded: string) {
  * @returns Decoded transaction object
  */
 export function decodeUnsignedTransaction(encoded: string) {
-  const bytes = decodeTransaction(encoded)
-  return decodeUnsignedTxn(bytes)
+  const bytes = decodeTransaction(encoded);
+  return decodeUnsignedTxn(bytes);
 }
 
 /**
@@ -71,7 +67,7 @@ export function decodeUnsignedTransaction(encoded: string) {
  * @returns True if the address is valid
  */
 export function isValidAlgorandAddress(address: string): boolean {
-  return isValidAddress(address)
+  return isValidAddress(address);
 }
 
 /**
@@ -83,11 +79,11 @@ export function isValidAlgorandAddress(address: string): boolean {
  */
 export function getSenderFromTransaction(txnBytes: Uint8Array, isSigned: boolean = true): string {
   if (isSigned) {
-    const signedTxn = decodeSignedTxn(txnBytes)
-    return signedTxn.txn.sender.toString()
+    const signedTxn = decodeSignedTxn(txnBytes);
+    return signedTxn.txn.sender.toString();
   }
-  const txn = decodeUnsignedTxn(txnBytes)
-  return txn.sender.toString()
+  const txn = decodeUnsignedTxn(txnBytes);
+  return txn.sender.toString();
 }
 
 /**
@@ -104,17 +100,17 @@ export function getSenderFromTransaction(txnBytes: Uint8Array, isSigned: boolean
  * ```
  */
 export function convertToTokenAmount(decimalAmount: string, decimals: number): string {
-  const amount = parseFloat(decimalAmount)
+  const amount = parseFloat(decimalAmount);
   if (isNaN(amount)) {
-    throw new Error(`Invalid amount: ${decimalAmount}`)
+    throw new Error(`Invalid amount: ${decimalAmount}`);
   }
 
   // Handle decimal conversion properly
-  const [intPart, decPart = ''] = String(amount).split('.')
-  const paddedDec = decPart.padEnd(decimals, '0').slice(0, decimals)
-  const tokenAmount = (intPart + paddedDec).replace(/^0+/, '') || '0'
+  const [intPart, decPart = ""] = String(amount).split(".");
+  const paddedDec = decPart.padEnd(decimals, "0").slice(0, decimals);
+  const tokenAmount = (intPart + paddedDec).replace(/^0+/, "") || "0";
 
-  return tokenAmount
+  return tokenAmount;
 }
 
 /**
@@ -125,19 +121,19 @@ export function convertToTokenAmount(decimalAmount: string, decimals: number): s
  * @returns Decimal amount as a string
  */
 export function convertFromTokenAmount(atomicAmount: string | bigint, decimals: number): string {
-  const amount = BigInt(atomicAmount)
-  const divisor = BigInt(10 ** decimals)
-  const intPart = amount / divisor
-  const decPart = amount % divisor
+  const amount = BigInt(atomicAmount);
+  const divisor = BigInt(10 ** decimals);
+  const intPart = amount / divisor;
+  const decPart = amount % divisor;
 
   if (decPart === BigInt(0)) {
-    return intPart.toString()
+    return intPart.toString();
   }
 
-  const decStr = decPart.toString().padStart(decimals, '0')
+  const decStr = decPart.toString().padStart(decimals, "0");
   // Remove trailing zeros
-  const trimmedDec = decStr.replace(/0+$/, '')
-  return `${intPart}.${trimmedDec}`
+  const trimmedDec = decStr.replace(/0+$/, "");
+  return `${intPart}.${trimmedDec}`;
 }
 
 /**
@@ -146,67 +142,41 @@ export function convertFromTokenAmount(atomicAmount: string | bigint, decimals: 
  * @param caip2 - CAIP-2 network identifier
  * @returns Network type ("mainnet" | "testnet") or null if unknown
  */
-export function getNetworkFromCaip2(caip2: string): 'mainnet' | 'testnet' | null {
-  if (!caip2.startsWith('algorand:')) {
-    return null
+export function getNetworkFromCaip2(caip2: string): "mainnet" | "testnet" | null {
+  if (!caip2.startsWith("algorand:")) {
+    return null;
   }
 
-  const genesisHash = caip2.slice('algorand:'.length)
+  const genesisHash = caip2.slice("algorand:".length);
 
   if (genesisHash === ALGORAND_MAINNET_GENESIS_HASH) {
-    return 'mainnet'
+    return "mainnet";
   }
   if (genesisHash === ALGORAND_TESTNET_GENESIS_HASH) {
-    return 'testnet'
+    return "testnet";
   }
 
-  return null
+  return null;
 }
 
 /**
  * Checks if a network identifier is an Algorand network
  *
- * @param network - Network identifier (CAIP-2 or V1 format)
+ * @param network - Network identifier (CAIP-2 format)
  * @returns True if the network is an Algorand network
  */
 export function isAlgorandNetwork(network: string): boolean {
-  // Check CAIP-2 format
-  if (network.startsWith('algorand:')) {
-    return true
-  }
-
-  // Check V1 format
-  return network === V1_ALGORAND_MAINNET || network === V1_ALGORAND_TESTNET
+  return network.startsWith("algorand:");
 }
 
 /**
  * Checks if a network identifier is a testnet
  *
- * @param network - Network identifier (CAIP-2 or V1 format)
+ * @param network - Network identifier (CAIP-2 format)
  * @returns True if the network is a testnet
  */
 export function isTestnetNetwork(network: string): boolean {
-  return network === ALGORAND_TESTNET_CAIP2 || network === V1_ALGORAND_TESTNET
-}
-
-/**
- * Converts a V1 network identifier to CAIP-2 format
- *
- * @param v1Network - V1 network identifier
- * @returns CAIP-2 network identifier or the original if not a V1 network
- */
-export function v1ToCaip2(v1Network: string): string {
-  return V1_TO_CAIP2[v1Network] ?? v1Network
-}
-
-/**
- * Converts a CAIP-2 network identifier to V1 format
- *
- * @param caip2Network - CAIP-2 network identifier
- * @returns V1 network identifier or the original if not a known CAIP-2 network
- */
-export function caip2ToV1(caip2Network: string): string {
-  return CAIP2_TO_V1[caip2Network] ?? caip2Network
+  return network === ALGORAND_TESTNET_CAIP2;
 }
 
 /**
@@ -218,9 +188,9 @@ export function caip2ToV1(caip2Network: string): string {
  */
 export function getGenesisHashFromTransaction(txn: { genesisHash?: Uint8Array }): string {
   if (!txn.genesisHash) {
-    throw new Error('Transaction does not have a genesis hash')
+    throw new Error("Transaction does not have a genesis hash");
   }
-  return Buffer.from(txn.genesisHash).toString('base64')
+  return Buffer.from(txn.genesisHash).toString("base64");
 }
 
 /**
@@ -231,23 +201,23 @@ export function getGenesisHashFromTransaction(txn: { genesisHash?: Uint8Array })
  */
 export function validateGroupId(txns: Uint8Array[]): boolean {
   if (txns.length <= 1) {
-    return true
+    return true;
   }
 
-  let expectedGroupId: string | null = null
+  let expectedGroupId: string | null = null;
 
   for (const txnBytes of txns) {
-    const txn = decodeUnsignedTxn(txnBytes)
-    const groupId = txn.group ? Buffer.from(txn.group).toString('base64') : null
+    const txn = decodeUnsignedTxn(txnBytes);
+    const groupId = txn.group ? Buffer.from(txn.group).toString("base64") : null;
 
     if (expectedGroupId === null) {
-      expectedGroupId = groupId
+      expectedGroupId = groupId;
     } else if (groupId !== expectedGroupId) {
-      return false
+      return false;
     }
   }
 
-  return true
+  return true;
 }
 
 /**
@@ -257,8 +227,8 @@ export function validateGroupId(txns: Uint8Array[]): boolean {
  * @returns Transaction ID string
  */
 export function getTransactionId(signedTxnBytes: Uint8Array): string {
-  const signedTxn = decodeSignedTxn(signedTxnBytes)
-  return signedTxn.txn.txId()
+  const signedTxn = decodeSignedTxn(signedTxnBytes);
+  return signedTxn.txn.txId();
 }
 
 /**
@@ -268,9 +238,11 @@ export function getTransactionId(signedTxnBytes: Uint8Array): string {
  * @returns True if the transaction has a signature
  */
 export function hasSignature(signedTxnBytes: Uint8Array): boolean {
-  const signedTxn = decodeSignedTxn(signedTxnBytes)
-  return signedTxn.sig !== undefined || signedTxn.lsig !== undefined || signedTxn.msig !== undefined
+  const signedTxn = decodeSignedTxn(signedTxnBytes);
+  return (
+    signedTxn.sig !== undefined || signedTxn.lsig !== undefined || signedTxn.msig !== undefined
+  );
 }
 
 // Re-export algokit-utils types that consumers may need
-export { Address, encodeAddress, decodeAddress } from '@algorandfoundation/algokit-utils/common'
+export { Address, encodeAddress, decodeAddress } from "@algorandfoundation/algokit-utils/common";

@@ -11,8 +11,9 @@ import type {
   Price,
   SchemeNetworkServer,
   MoneyParser,
-} from '@x402/core/types'
-import { USDC_CONFIG, USDC_DECIMALS } from '../../constants'
+} from "@x402/core/types";
+import { USDC_CONFIG, USDC_DECIMALS } from "../../constants";
+import { convertToTokenAmount } from "../../utils";
 
 /**
  * AVM server implementation for the Exact payment scheme.
@@ -20,8 +21,8 @@ import { USDC_CONFIG, USDC_DECIMALS } from '../../constants'
  * Handles price parsing and payment requirements enhancement for Algorand networks.
  */
 export class ExactAvmScheme implements SchemeNetworkServer {
-  readonly scheme = 'exact'
-  private moneyParsers: MoneyParser[] = []
+  readonly scheme = "exact";
+  private moneyParsers: MoneyParser[] = [];
 
   /**
    * Register a custom money parser in the parser chain.
@@ -45,8 +46,8 @@ export class ExactAvmScheme implements SchemeNetworkServer {
    * ```
    */
   registerMoneyParser(parser: MoneyParser): ExactAvmScheme {
-    this.moneyParsers.push(parser)
-    return this
+    this.moneyParsers.push(parser);
+    return this;
   }
 
   /**
@@ -61,30 +62,30 @@ export class ExactAvmScheme implements SchemeNetworkServer {
    */
   async parsePrice(price: Price, network: Network): Promise<AssetAmount> {
     // If already an AssetAmount, return it directly
-    if (typeof price === 'object' && price !== null && 'amount' in price) {
+    if (typeof price === "object" && price !== null && "amount" in price) {
       if (!price.asset) {
-        throw new Error(`Asset ID must be specified for AssetAmount on network ${network}`)
+        throw new Error(`Asset ID must be specified for AssetAmount on network ${network}`);
       }
       return {
         amount: price.amount,
         asset: price.asset,
         extra: price.extra || {},
-      }
+      };
     }
 
     // Parse Money to decimal number
-    const amount = this.parseMoneyToDecimal(price)
+    const amount = this.parseMoneyToDecimal(price);
 
     // Try each custom money parser in order
     for (const parser of this.moneyParsers) {
-      const result = await parser(amount, network)
+      const result = await parser(amount, network);
       if (result !== null) {
-        return result
+        return result;
       }
     }
 
     // All custom parsers returned null, use default conversion
-    return this.defaultMoneyConversion(amount, network)
+    return this.defaultMoneyConversion(amount, network);
   }
 
   /**
@@ -102,19 +103,19 @@ export class ExactAvmScheme implements SchemeNetworkServer {
   enhancePaymentRequirements(
     paymentRequirements: PaymentRequirements,
     supportedKind: {
-      x402Version: number
-      scheme: string
-      network: Network
-      extra?: Record<string, unknown>
+      x402Version: number;
+      scheme: string;
+      network: Network;
+      extra?: Record<string, unknown>;
     },
     extensionKeys: string[],
   ): Promise<PaymentRequirements> {
     // Mark unused parameter
-    void extensionKeys
+    void extensionKeys;
 
     // Get USDC config for the network
-    const usdcConfig = USDC_CONFIG[supportedKind.network]
-    const decimals = usdcConfig?.decimals ?? USDC_DECIMALS
+    const usdcConfig = USDC_CONFIG[supportedKind.network];
+    const decimals = usdcConfig?.decimals ?? USDC_DECIMALS;
 
     // Build enhanced requirements with feePayer and decimals
     const enhanced: PaymentRequirements = {
@@ -123,17 +124,17 @@ export class ExactAvmScheme implements SchemeNetworkServer {
         ...paymentRequirements.extra,
         decimals,
       },
-    }
+    };
 
     // Add feePayer from supportedKind.extra if provided
     if (supportedKind.extra?.feePayer) {
       enhanced.extra = {
         ...enhanced.extra,
         feePayer: supportedKind.extra.feePayer,
-      }
+      };
     }
 
-    return Promise.resolve(enhanced)
+    return Promise.resolve(enhanced);
   }
 
   /**
@@ -144,19 +145,19 @@ export class ExactAvmScheme implements SchemeNetworkServer {
    * @returns Decimal number
    */
   private parseMoneyToDecimal(money: string | number): number {
-    if (typeof money === 'number') {
-      return money
+    if (typeof money === "number") {
+      return money;
     }
 
     // Remove $ sign and whitespace, then parse
-    const cleanMoney = money.replace(/^\$/, '').trim()
-    const amount = parseFloat(cleanMoney)
+    const cleanMoney = money.replace(/^\$/, "").trim();
+    const amount = parseFloat(cleanMoney);
 
     if (isNaN(amount)) {
-      throw new Error(`Invalid money format: ${money}`)
+      throw new Error(`Invalid money format: ${money}`);
     }
 
-    return amount
+    return amount;
   }
 
   /**
@@ -168,38 +169,13 @@ export class ExactAvmScheme implements SchemeNetworkServer {
    * @returns The parsed asset amount in USDC
    */
   private defaultMoneyConversion(amount: number, network: Network): AssetAmount {
-    const assetInfo = this.getDefaultAsset(network)
-    const tokenAmount = this.convertToTokenAmount(amount.toString(), assetInfo.decimals)
+    const assetInfo = this.getDefaultAsset(network);
+    const tokenAmount = convertToTokenAmount(amount.toString(), assetInfo.decimals);
 
     return {
       amount: tokenAmount,
       asset: assetInfo.asaId,
-      extra: {
-        name: assetInfo.name,
-        decimals: assetInfo.decimals,
-      },
-    }
-  }
-
-  /**
-   * Convert decimal amount to token units (e.g., 0.10 -> 100000 for 6-decimal tokens)
-   *
-   * @param decimalAmount - The decimal amount to convert
-   * @param decimals - The number of decimals for the token
-   * @returns The token amount as a string
-   */
-  private convertToTokenAmount(decimalAmount: string, decimals: number): string {
-    const amount = parseFloat(decimalAmount)
-    if (isNaN(amount)) {
-      throw new Error(`Invalid amount: ${decimalAmount}`)
-    }
-
-    // Convert to smallest unit
-    const [intPart, decPart = ''] = String(amount).split('.')
-    const paddedDec = decPart.padEnd(decimals, '0').slice(0, decimals)
-    const tokenAmount = (intPart + paddedDec).replace(/^0+/, '') || '0'
-
-    return tokenAmount
+    };
   }
 
   /**
@@ -209,15 +185,15 @@ export class ExactAvmScheme implements SchemeNetworkServer {
    * @returns The asset information including ASA ID, name, and decimals
    */
   private getDefaultAsset(network: Network): {
-    asaId: string
-    name: string
-    decimals: number
+    asaId: string;
+    name: string;
+    decimals: number;
   } {
-    const assetInfo = USDC_CONFIG[network]
+    const assetInfo = USDC_CONFIG[network];
     if (!assetInfo) {
-      throw new Error(`No default asset configured for network ${network}`)
+      throw new Error(`No default asset configured for network ${network}`);
     }
 
-    return assetInfo
+    return assetInfo;
   }
 }

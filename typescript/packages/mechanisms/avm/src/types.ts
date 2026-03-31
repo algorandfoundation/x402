@@ -26,21 +26,14 @@ export interface ExactAvmPayloadV2 {
    * Array of base64-encoded msgpack transactions forming an atomic group.
    * May include unsigned transactions (for fee payer) that the facilitator will sign.
    */
-  paymentGroup: string[]
+  paymentGroup: string[];
 
   /**
    * Zero-based index of the payment transaction within paymentGroup.
    * This transaction must be an ASA transfer to the payTo address.
    */
-  paymentIndex: number
+  paymentIndex: number;
 }
-
-/**
- * V1 Payload for Algorand exact payment scheme (backward compatibility)
- *
- * Same structure as V2 for Algorand.
- */
-export type ExactAvmPayloadV1 = ExactAvmPayloadV2
 
 /**
  * Type guard to check if a payload is an ExactAvmPayloadV2
@@ -50,14 +43,14 @@ export type ExactAvmPayloadV1 = ExactAvmPayloadV2
  */
 export function isExactAvmPayload(payload: unknown): payload is ExactAvmPayloadV2 {
   return (
-    typeof payload === 'object' &&
+    typeof payload === "object" &&
     payload !== null &&
-    'paymentGroup' in payload &&
-    'paymentIndex' in payload &&
+    "paymentGroup" in payload &&
+    "paymentIndex" in payload &&
     Array.isArray((payload as ExactAvmPayloadV2).paymentGroup) &&
-    typeof (payload as ExactAvmPayloadV2).paymentIndex === 'number' &&
-    (payload as ExactAvmPayloadV2).paymentGroup.every(item => typeof item === 'string')
-  )
+    typeof (payload as ExactAvmPayloadV2).paymentIndex === "number" &&
+    (payload as ExactAvmPayloadV2).paymentGroup.every(item => typeof item === "string")
+  );
 }
 
 // Transaction and SignedTransaction types are provided by @algorandfoundation/algokit-utils/transact

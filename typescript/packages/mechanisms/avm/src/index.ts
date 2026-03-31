@@ -19,7 +19,7 @@
  */
 
 // Exact scheme client
-export { ExactAvmScheme } from './exact'
+export { ExactAvmScheme } from "./exact";
 
 // Signer helpers and interfaces
 export {
@@ -28,27 +28,24 @@ export {
   toFacilitatorAvmSigner,
   getAlgokitSigner,
   ALGOKIT_SIGNER,
-} from './signer'
+} from "./signer";
 export type {
   ClientAvmSigner,
   ClientAvmConfig,
   FacilitatorAvmSigner,
   FacilitatorAvmSignerConfig,
-} from './signer'
+} from "./signer";
 
 // Re-export algokit-utils signer types for consumers who want native interop
 export type {
   AddressWithTransactionSigner,
   AddressWithSigners,
   TransactionSigner,
-} from '@algorandfoundation/algokit-utils/transact'
+} from "@algorandfoundation/algokit-utils/transact";
 
 // Types
-export type {
-  ExactAvmPayloadV1,
-  ExactAvmPayloadV2,
-} from './types'
-export { isExactAvmPayload } from './types'
+export type { ExactAvmPayloadV2 } from "./types";
+export { isExactAvmPayload } from "./types";
 
 // Constants
 export {
@@ -59,27 +56,19 @@ export {
   // Genesis Hashes
   ALGORAND_MAINNET_GENESIS_HASH,
   ALGORAND_TESTNET_GENESIS_HASH,
-  // V1 Network Identifiers
-  V1_ALGORAND_MAINNET,
-  V1_ALGORAND_TESTNET,
-  V1_NETWORKS,
-  V1_TO_CAIP2,
-  CAIP2_TO_V1,
   // USDC Configuration
   USDC_MAINNET_ASA_ID,
   USDC_TESTNET_ASA_ID,
   USDC_DECIMALS,
   USDC_CONFIG,
   // Transaction Limits
-  MAX_REASONABLE_FEE,
-} from './constants'
+  MAX_REASONABLE_FEE_PER_TXN,
+  maxReasonableGroupFee,
+} from "./constants";
 
 // Re-export algokit-utils constants that consumers may need
-export {
-  MAX_TRANSACTION_GROUP_SIZE,
-  ALGORAND_ADDRESS_LENGTH,
-} from '@algorandfoundation/algokit-utils/common'
-export { ALGORAND_MIN_TX_FEE } from '@algorandfoundation/algokit-utils/amount'
+export { ALGORAND_ADDRESS_LENGTH } from "@algorandfoundation/algokit-utils/common";
+export { ALGORAND_MIN_TX_FEE } from "@algorandfoundation/algokit-utils/amount";
 
 // Utilities
 export {
@@ -94,10 +83,8 @@ export {
   getNetworkFromCaip2,
   isAlgorandNetwork,
   isTestnetNetwork,
-  v1ToCaip2,
-  caip2ToV1,
   getGenesisHashFromTransaction,
   validateGroupId,
   getTransactionId,
   hasSignature,
-} from './utils'
+} from "./utils";

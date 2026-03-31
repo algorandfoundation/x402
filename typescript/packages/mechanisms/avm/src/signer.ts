@@ -20,19 +20,19 @@
  * ```
  */
 
-import { AlgorandClient } from '@algorandfoundation/algokit-utils/algorand-client'
-import { ed25519Generator } from '@algorandfoundation/algokit-utils/crypto'
+import { AlgorandClient } from "@algorandfoundation/algokit-utils/algorand-client";
+import { ed25519Generator } from "@algorandfoundation/algokit-utils/crypto";
 import {
   decodeTransaction,
   generateAddressWithSigners,
-} from '@algorandfoundation/algokit-utils/transact'
+} from "@algorandfoundation/algokit-utils/transact";
 import type {
   AddressWithSigners,
   AddressWithTransactionSigner,
-} from '@algorandfoundation/algokit-utils/transact'
-import { waitForConfirmation } from '@algorandfoundation/algokit-utils/transaction'
-import type { Network } from '@x402/core/types'
-import { ALGORAND_TESTNET_CAIP2, V1_ALGORAND_TESTNET } from './constants'
+} from "@algorandfoundation/algokit-utils/transact";
+import { waitForConfirmation } from "@algorandfoundation/algokit-utils/transaction";
+import type { Network } from "@x402/core/types";
+import { ALGORAND_TESTNET_CAIP2 } from "./constants";
 
 /**
  * Symbol key used to attach the internal algokit-utils AddressWithSigners
@@ -40,7 +40,7 @@ import { ALGORAND_TESTNET_CAIP2, V1_ALGORAND_TESTNET } from './constants'
  * This enables internal code to extract the native algokit signer for
  * use with TransactionComposer and AlgorandClient.
  */
-export const ALGOKIT_SIGNER = Symbol('algokit-signer')
+export const ALGOKIT_SIGNER = Symbol("algokit-signer");
 
 /**
  * Client-side signer interface for Algorand wallets
@@ -52,7 +52,7 @@ export interface ClientAvmSigner {
   /**
    * The Algorand address of the signer
    */
-  address: string
+  address: string;
 
   /**
    * Sign one or more transactions
@@ -61,7 +61,7 @@ export interface ClientAvmSigner {
    * @param indexesToSign - Optional array of indexes to sign (if not provided, sign all)
    * @returns Promise resolving to array of signed transactions (null for unsigned)
    */
-  signTransactions(txns: Uint8Array[], indexesToSign?: number[]): Promise<(Uint8Array | null)[]>
+  signTransactions(txns: Uint8Array[], indexesToSign?: number[]): Promise<(Uint8Array | null)[]>;
 }
 
 /**
@@ -72,17 +72,17 @@ export interface ClientAvmConfig {
    * Pre-configured AlgorandClient instance (takes precedence over URL/token)
    * Use AlgorandClient.testNet(), .mainNet(), .fromConfig(), etc.
    */
-  algorandClient?: import('@algorandfoundation/algokit-utils/algorand-client').AlgorandClient
+  algorandClient?: import("@algorandfoundation/algokit-utils/algorand-client").AlgorandClient;
 
   /**
    * Algod API URL (used if algorandClient not provided)
    */
-  algodUrl?: string
+  algodUrl?: string;
 
   /**
    * Algod API token
    */
-  algodToken?: string
+  algodToken?: string;
 }
 
 /**
@@ -104,7 +104,7 @@ export interface FacilitatorAvmSigner {
    *
    * @returns Array of Algorand addresses
    */
-  getAddresses(): readonly string[]
+  getAddresses(): readonly string[];
 
   /**
    * Sign a transaction with the signer matching the sender address
@@ -113,7 +113,7 @@ export interface FacilitatorAvmSigner {
    * @param senderAddress - Expected sender address (for verification)
    * @returns Promise resolving to signed transaction bytes
    */
-  signTransaction(txn: Uint8Array, senderAddress: string): Promise<Uint8Array>
+  signTransaction(txn: Uint8Array, senderAddress: string): Promise<Uint8Array>;
 
   /**
    * Get Algod client for a specific network
@@ -123,7 +123,7 @@ export interface FacilitatorAvmSigner {
    */
   getAlgodClient(
     network: Network,
-  ): import('@algorandfoundation/algokit-utils/algod-client').AlgodClient
+  ): import("@algorandfoundation/algokit-utils/algod-client").AlgodClient;
 
   /**
    * Simulate a transaction group before submission
@@ -135,7 +135,7 @@ export interface FacilitatorAvmSigner {
   simulateTransactions(
     txns: Uint8Array[],
     network: Network,
-  ): Promise<import('@algorandfoundation/algokit-utils/algod-client').SimulateResponse>
+  ): Promise<import("@algorandfoundation/algokit-utils/algod-client").SimulateResponse>;
 
   /**
    * Submit signed transactions to the network
@@ -144,7 +144,7 @@ export interface FacilitatorAvmSigner {
    * @param network - Network identifier
    * @returns Promise resolving to transaction ID
    */
-  sendTransactions(signedTxns: Uint8Array[], network: Network): Promise<string>
+  sendTransactions(signedTxns: Uint8Array[], network: Network): Promise<string>;
 
   /**
    * Wait for a transaction to be confirmed
@@ -158,7 +158,7 @@ export interface FacilitatorAvmSigner {
     txId: string,
     network: Network,
     waitRounds?: number,
-  ): Promise<import('@algorandfoundation/algokit-utils/algod-client').PendingTransactionResponse>
+  ): Promise<import("@algorandfoundation/algokit-utils/algod-client").PendingTransactionResponse>;
 }
 
 /**
@@ -168,17 +168,17 @@ export interface FacilitatorAvmSignerConfig {
   /**
    * Algod URL for mainnet
    */
-  mainnetUrl?: string
+  mainnetUrl?: string;
 
   /**
    * Algod URL for testnet
    */
-  testnetUrl?: string
+  testnetUrl?: string;
 
   /**
    * Algod API token
    */
-  algodToken?: string
+  algodToken?: string;
 }
 
 /**
@@ -189,13 +189,13 @@ export interface FacilitatorAvmSignerConfig {
  */
 export function isAvmSignerWallet(wallet: unknown): wallet is ClientAvmSigner {
   return (
-    typeof wallet === 'object' &&
+    typeof wallet === "object" &&
     wallet !== null &&
-    'address' in wallet &&
-    typeof (wallet as ClientAvmSigner).address === 'string' &&
-    'signTransactions' in wallet &&
-    typeof (wallet as ClientAvmSigner).signTransactions === 'function'
-  )
+    "address" in wallet &&
+    typeof (wallet as ClientAvmSigner).address === "string" &&
+    "signTransactions" in wallet &&
+    typeof (wallet as ClientAvmSigner).signTransactions === "function"
+  );
 }
 
 /**
@@ -205,14 +205,14 @@ export function isAvmSignerWallet(wallet: unknown): wallet is ClientAvmSigner {
  * @returns Address and raw Ed25519 signer function
  */
 function decodePrivateKey(privateKeyBase64: string) {
-  const secretKey = Buffer.from(privateKeyBase64, 'base64')
+  const secretKey = Buffer.from(privateKeyBase64, "base64");
   if (secretKey.length !== 64) {
     throw new Error(
-      'AVM private key must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)',
-    )
+      "AVM private key must be a Base64-encoded 64-byte key (32-byte seed + 32-byte public key)",
+    );
   }
-  const seed = secretKey.subarray(0, 32)
-  return ed25519Generator(seed)
+  const seed = secretKey.subarray(0, 32);
+  return ed25519Generator(seed);
 }
 
 /**
@@ -233,26 +233,26 @@ function decodePrivateKey(privateKeyBase64: string) {
  * ```
  */
 export function toClientAvmSigner(privateKeyBase64: string): ClientAvmSigner {
-  const { ed25519Pubkey, rawEd25519Signer } = decodePrivateKey(privateKeyBase64)
+  const { ed25519Pubkey, rawEd25519Signer } = decodePrivateKey(privateKeyBase64);
 
   // Use algokit-utils generateAddressWithSigners for the canonical signer implementation
-  const algokitSigners = generateAddressWithSigners({ ed25519Pubkey, rawEd25519Signer })
-  const address = algokitSigners.addr.toString()
+  const algokitSigners = generateAddressWithSigners({ ed25519Pubkey, rawEd25519Signer });
+  const address = algokitSigners.addr.toString();
 
   const signer: ClientAvmSigner = {
     address,
     signTransactions: async (txns: Uint8Array[], indexesToSign?: number[]) => {
       return Promise.all(
         txns.map(async (txn, i) => {
-          if (indexesToSign && !indexesToSign.includes(i)) return null
-          const decoded = decodeTransaction(txn)
+          if (indexesToSign && !indexesToSign.includes(i)) return null;
+          const decoded = decodeTransaction(txn);
           // Delegate to the algokit-utils signer (signs a single transaction in a group)
-          const signedBytes = await algokitSigners.signer([decoded], [0])
-          return signedBytes[0]
+          const signedBytes = await algokitSigners.signer([decoded], [0]);
+          return signedBytes[0];
         }),
-      )
+      );
     },
-  }
+  };
 
   // Attach the internal algokit-utils AddressWithSigners for use by internal code
   // (e.g., TransactionComposer integration in client scheme)
@@ -260,9 +260,9 @@ export function toClientAvmSigner(privateKeyBase64: string): ClientAvmSigner {
     value: algokitSigners,
     enumerable: false,
     writable: false,
-  })
+  });
 
-  return signer
+  return signer;
 }
 
 /**
@@ -279,21 +279,21 @@ export function toClientAvmSigner(privateKeyBase64: string): ClientAvmSigner {
 export function getAlgokitSigner(signer: ClientAvmSigner): AddressWithTransactionSigner | null {
   const internal = (signer as unknown as Record<symbol, unknown>)[ALGOKIT_SIGNER] as
     | AddressWithSigners
-    | undefined
-  if (internal && 'addr' in internal && 'signer' in internal) {
-    return { addr: internal.addr, signer: internal.signer }
+    | undefined;
+  if (internal && "addr" in internal && "signer" in internal) {
+    return { addr: internal.addr, signer: internal.signer };
   }
-  return null
+  return null;
 }
 
 /**
  * Determines if a network identifier refers to testnet.
  *
- * @param network - The network identifier (CAIP-2 or v1 format)
+ * @param network - The network identifier (CAIP-2 format)
  * @returns True if the network is testnet
  */
 function isTestnet(network: string): boolean {
-  return network === ALGORAND_TESTNET_CAIP2 || network === V1_ALGORAND_TESTNET
+  return network === ALGORAND_TESTNET_CAIP2;
 }
 
 /**
@@ -328,69 +328,69 @@ export function toFacilitatorAvmSigner(
   privateKeyBase64: string,
   config?: FacilitatorAvmSignerConfig,
 ): FacilitatorAvmSigner {
-  const { ed25519Pubkey, rawEd25519Signer } = decodePrivateKey(privateKeyBase64)
+  const { ed25519Pubkey, rawEd25519Signer } = decodePrivateKey(privateKeyBase64);
 
   // Use algokit-utils generateAddressWithSigners for the canonical signer implementation
-  const algokitSigners = generateAddressWithSigners({ ed25519Pubkey, rawEd25519Signer })
-  const address = algokitSigners.addr.toString()
+  const algokitSigners = generateAddressWithSigners({ ed25519Pubkey, rawEd25519Signer });
+  const address = algokitSigners.addr.toString();
 
   // Create AlgorandClient instances for each network, with optional URL overrides
   const getAlgorandClientForNetwork = (network: string) => {
     if (isTestnet(network)) {
       if (config?.testnetUrl) {
         return AlgorandClient.fromConfig({
-          algodConfig: { server: config.testnetUrl, token: config.algodToken ?? '' },
-        })
+          algodConfig: { server: config.testnetUrl, token: config.algodToken ?? "" },
+        });
       }
-      return AlgorandClient.testNet()
+      return AlgorandClient.testNet();
     }
     if (config?.mainnetUrl) {
       return AlgorandClient.fromConfig({
-        algodConfig: { server: config.mainnetUrl, token: config.algodToken ?? '' },
-      })
+        algodConfig: { server: config.mainnetUrl, token: config.algodToken ?? "" },
+      });
     }
-    return AlgorandClient.mainNet()
-  }
+    return AlgorandClient.mainNet();
+  };
 
   // Cache AlgorandClient instances per network
-  const clientCache = new Map<string, ReturnType<typeof AlgorandClient.testNet>>()
+  const clientCache = new Map<string, ReturnType<typeof AlgorandClient.testNet>>();
 
   const getClient = (network: string) => {
-    const key = isTestnet(network) ? 'testnet' : 'mainnet'
-    let client = clientCache.get(key)
+    const key = isTestnet(network) ? "testnet" : "mainnet";
+    let client = clientCache.get(key);
     if (!client) {
-      client = getAlgorandClientForNetwork(network)
-      clientCache.set(key, client)
+      client = getAlgorandClientForNetwork(network);
+      clientCache.set(key, client);
     }
-    return client
-  }
+    return client;
+  };
 
   return {
     getAddresses: () => [address] as readonly string[],
 
     signTransaction: async (txn: Uint8Array, _: string) => {
-      const decoded = decodeTransaction(txn)
+      const decoded = decodeTransaction(txn);
       // Delegate to the algokit-utils signer
-      const signedBytes = await algokitSigners.signer([decoded], [0])
-      return signedBytes[0]
+      const signedBytes = await algokitSigners.signer([decoded], [0]);
+      return signedBytes[0];
     },
 
     getAlgodClient: (network: string) => getClient(network).client.algod,
 
     simulateTransactions: async (txns: Uint8Array[], network: string) => {
-      const algod = getClient(network).client.algod
-      return await algod.simulateRawTransactions(txns)
+      const algod = getClient(network).client.algod;
+      return await algod.simulateRawTransactions(txns);
     },
 
     sendTransactions: async (signedTxns: Uint8Array[], network: string) => {
-      const algod = getClient(network).client.algod
-      const response = await algod.sendRawTransaction(signedTxns)
-      return response.txId
+      const algod = getClient(network).client.algod;
+      const response = await algod.sendRawTransaction(signedTxns);
+      return response.txId;
     },
 
-    waitForConfirmation: async (txId: string, network: string, waitRounds: number = 4) => {
-      const algod = getClient(network).client.algod
-      return await waitForConfirmation(txId, waitRounds, algod)
+    waitForConfirmation: async (txId: string, network: string, waitRounds: number = 5) => {
+      const algod = getClient(network).client.algod;
+      return await waitForConfirmation(txId, waitRounds, algod);
     },
-  }
+  };
 }

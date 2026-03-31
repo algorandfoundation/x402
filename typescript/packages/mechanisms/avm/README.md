@@ -125,16 +125,54 @@ console.log(signer.address); // Algorand address
 
 The SDK uses `AlgorandClient` from `@algorandfoundation/algokit-utils` for all network connectivity. By default it connects to [AlgoNode](https://algonode.io/) public endpoints (free, no authentication required). Custom endpoints can be configured via `FacilitatorAvmSignerConfig` or by passing an `AlgorandClient` instance via `ClientAvmConfig.algorandClient`.
 
+## Prerequisites: Account Funding & Asset Opt-In
+
+Algorand requires accounts to meet a **Minimum Balance Requirement (MBR)** and explicitly **opt in** to assets before receiving them. This applies to all roles: client, server (payTo), and facilitator.
+
+### 1. Fund Accounts with ALGO
+
+Every Algorand account needs a minimum ALGO balance:
+- **Base MBR**: 0.1 ALGO per account
+- **Per asset opt-in**: +0.1 ALGO per ASA opted into
+- **Facilitator**: needs additional ALGO to cover transaction fees for gasless payments
+
+| Testnet Faucet | URL |
+|----------------|-----|
+| **ALGO** | https://lora.algokit.io/testnet/fund |
+| **USDC** (Circle) | https://faucet.circle.com/ |
+
+### 2. Opt In to USDC ASA
+
+Both the **client** (payer) and **server/payTo** (receiver) accounts must opt in to USDC before any payment can be made. An opt-in is a 0-amount asset transfer to yourself.
+
+| Network | USDC ASA ID |
+|---------|-------------|
+| Testnet | `10458941` |
+| Mainnet | `31566704` |
+
+### 3. Quick Setup (Testnet)
+
+```bash
+# 1. Generate a key (or use an existing one)
+#    AVM_PRIVATE_KEY is a Base64-encoded 64-byte key (seed + pubkey)
+
+# 2. Fund accounts with ALGO
+#    Visit https://lora.algokit.io/testnet/fund
+
+# 3. Fund accounts with testnet USDC
+#    Visit https://faucet.circle.com/ (select Algorand Testnet)
+
+# 4. Set environment variables
+export AVM_PRIVATE_KEY="<base64-encoded-64-byte-key>"
+```
+
+> **Note:** The facilitator account must also be funded with ALGO to cover transaction fees. For gasless payments, the facilitator pays fees on behalf of the client, so ensure the facilitator has sufficient ALGO balance.
+
 ## Asset Support
 
 Supports Algorand Standard Assets (ASA):
 - USDC (primary)
 - Any ASA with proper opt-in
-
-### Testnet Faucets
-
-- **ALGO**: https://lora.algokit.io/testnet/fund
-- **USDC on Algorand**: https://faucet.circle.com/
 
 ## Transaction Structure
 
@@ -142,6 +180,30 @@ The exact payment scheme uses atomic transaction groups with:
 - Payment transaction (ASA transfer or ALGO payment)
 - Optional fee payer transaction (gasless transactions)
 - Transaction simulation for validation
+
+### Transaction Fees
+
+Algorand transaction fees are dynamic, calculated as:
+
+```
+fee = max(current_fee_per_byte × transaction_size, min_fee)
+```
+
+Under normal (non-congested) network conditions, `current_fee_per_byte` is 0, so `fee = min_fee = 1000 µAlgo (0.001 ALGO)`. During network congestion, fees can rise above the minimum.
+
+The client fetches `suggestedParams` from the Algorand node to determine the current fee rate. For gasless payments with a fee payer, the exact fee is calculated from the actual encoded byte sizes of all transactions in the group, ensuring correct coverage under both normal and congested conditions via Algorand's native fee pooling.
+
+The facilitator enforces a maximum reasonable fee of **5000 µAlgo per transaction** in the group (5x the normal minimum). For example, a 2-transaction group has a max fee cap of 10,000 µAlgo. This prevents fee extraction attacks while accommodating reasonable congestion surcharges.
+
+## Error Codes
+
+The facilitator returns machine-readable error codes in `invalidReason` (verify) and `errorReason` (settle), using the `invalid_exact_avm_*` prefix convention. Human-readable details are in `invalidMessage` / `errorMessage`.
+
+**Verify errors:** `invalid_exact_avm_invalid_version`, `invalid_exact_avm_scheme`, `invalid_exact_avm_network_mismatch`, `invalid_exact_avm_payload`, `invalid_exact_avm_group_size_exceeded`, `invalid_exact_avm_payment_index`, `invalid_exact_avm_invalid_transaction`, `invalid_exact_avm_invalid_group_id`, `invalid_exact_avm_not_asset_transfer`, `invalid_exact_avm_amount_mismatch`, `invalid_exact_avm_receiver_mismatch`, `invalid_exact_avm_asset_mismatch`, `invalid_exact_avm_invalid_fee_payer`, `invalid_exact_avm_fee_too_high`, `invalid_exact_avm_payment_not_signed`, `invalid_exact_avm_invalid_signature`, `invalid_exact_avm_simulation_failed`, `invalid_exact_avm_facilitator_transferring`, `invalid_exact_avm_unsigned_non_facilitator`
+
+**Settle errors:** `invalid_exact_avm_settlement_failed`, `invalid_exact_avm_confirmation_failed`
+
+See the [AVM exact scheme spec](../../../specs/schemes/exact/scheme_exact_algo.md) for detailed descriptions.
 
 ## Development
 

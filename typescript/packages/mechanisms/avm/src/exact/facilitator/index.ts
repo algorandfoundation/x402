@@ -1,1 +1,2 @@
-export { ExactAvmScheme, VerifyErrorReason } from './scheme'
+export { ExactAvmScheme } from "./scheme";
+export * as Errors from "./errors";
