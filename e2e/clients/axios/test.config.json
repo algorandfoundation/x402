@@ -3,9 +3,9 @@
   "type": "client",
   "language": "typescript",
   "protocolFamilies": [
-    "avm",
     "evm",
     "svm",
+    "avm",
     "aptos",
     "stellar"
   ],

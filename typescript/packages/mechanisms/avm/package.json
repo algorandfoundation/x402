@@ -45,7 +45,7 @@
     "vitest": "^3.0.5"
   },
   "dependencies": {
-    "@algorandfoundation/algokit-utils": "10.0.0-alpha.39",
+    "@algorandfoundation/algokit-utils": "10.0.0-alpha.46",
     "@x402/core": "workspace:^"
   },
   "exports": {

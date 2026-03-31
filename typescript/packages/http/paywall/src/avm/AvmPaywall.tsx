@@ -25,6 +25,7 @@ type AvmPaywallProps = {
  * @param props - Component props.
  * @param props.paymentRequired - Payment required response with accepts array.
  * @param props.walletManager - WalletManager instance from use-wallet.
+ * @param props.algorandClient - Optional AlgorandClient instance for network connectivity.
  * @param props.onSuccessfulResponse - Callback invoked on successful 402 response.
  * @returns JSX element.
  */

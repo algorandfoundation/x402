@@ -143,65 +143,69 @@ describe("AVM Integration Tests", () => {
       await server.initialize();
     });
 
-    it("server should successfully verify and settle an AVM payment from a client", { timeout: 30000 }, async () => {
-      // Server - builds PaymentRequired response
-      const accepts = [
-        buildAvmPaymentRequirements(
-          FACILITATOR_ADDRESS,
-          "1000", // 0.001 USDC
-        ),
-      ];
-      const resource = {
-        url: "https://company.co",
-        description: "Company Co. resource",
-        mimeType: "application/json",
-      };
-      const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
+    it(
+      "server should successfully verify and settle an AVM payment from a client",
+      { timeout: 30000 },
+      async () => {
+        // Server - builds PaymentRequired response
+        const accepts = [
+          buildAvmPaymentRequirements(
+            FACILITATOR_ADDRESS,
+            "1000", // 0.001 USDC
+          ),
+        ];
+        const resource = {
+          url: "https://company.co",
+          description: "Company Co. resource",
+          mimeType: "application/json",
+        };
+        const paymentRequired = await server.createPaymentRequiredResponse(accepts, resource);
 
-      // Client - responds with PaymentPayload response
-      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+        // Client - responds with PaymentPayload response
+        const paymentPayload = await client.createPaymentPayload(paymentRequired);
 
-      expect(paymentPayload).toBeDefined();
-      expect(paymentPayload.x402Version).toBe(2);
-      expect(paymentPayload.accepted.scheme).toBe("exact");
+        expect(paymentPayload).toBeDefined();
+        expect(paymentPayload.x402Version).toBe(2);
+        expect(paymentPayload.accepted.scheme).toBe("exact");
 
-      // Verify the payload structure
-      const avmPayload = paymentPayload.payload as ExactAvmPayloadV2;
-      expect(avmPayload.paymentGroup).toBeDefined();
-      expect(avmPayload.paymentGroup.length).toBeGreaterThan(0);
-      expect(typeof avmPayload.paymentGroup[0]).toBe("string");
-      expect(avmPayload.paymentGroup[0].length).toBeGreaterThan(0);
+        // Verify the payload structure
+        const avmPayload = paymentPayload.payload as ExactAvmPayloadV2;
+        expect(avmPayload.paymentGroup).toBeDefined();
+        expect(avmPayload.paymentGroup.length).toBeGreaterThan(0);
+        expect(typeof avmPayload.paymentGroup[0]).toBe("string");
+        expect(avmPayload.paymentGroup[0].length).toBeGreaterThan(0);
 
-      // Server - maps payment payload to payment requirements
-      const accepted = server.findMatchingRequirements(accepts, paymentPayload);
-      expect(accepted).toBeDefined();
+        // Server - maps payment payload to payment requirements
+        const accepted = server.findMatchingRequirements(accepts, paymentPayload);
+        expect(accepted).toBeDefined();
 
-      const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
+        const verifyResponse = await server.verifyPayment(paymentPayload, accepted!);
 
-      if (!verifyResponse.isValid) {
-        console.log("❌ Verification failed!");
-        console.log("Invalid reason:", verifyResponse.invalidReason);
-        console.log("Payer:", verifyResponse.payer);
-        console.log("Client address:", clientAddress);
-        console.log("Payload:", JSON.stringify(paymentPayload, null, 2));
-      }
+        if (!verifyResponse.isValid) {
+          console.log("❌ Verification failed!");
+          console.log("Invalid reason:", verifyResponse.invalidReason);
+          console.log("Payer:", verifyResponse.payer);
+          console.log("Client address:", clientAddress);
+          console.log("Payload:", JSON.stringify(paymentPayload, null, 2));
+        }
 
-      expect(verifyResponse.isValid).toBe(true);
-      expect(verifyResponse.payer).toBe(clientAddress);
+        expect(verifyResponse.isValid).toBe(true);
+        expect(verifyResponse.payer).toBe(clientAddress);
 
-      // Server does work here
+        // Server does work here
 
-      const settleResponse = await server.settlePayment(paymentPayload, accepted!);
+        const settleResponse = await server.settlePayment(paymentPayload, accepted!);
 
-      if (!settleResponse.success) {
-        console.log("❌ Direct Settlement failed!", JSON.stringify(settleResponse, null, 2));
-      }
+        if (!settleResponse.success) {
+          console.log("❌ Direct Settlement failed!", JSON.stringify(settleResponse, null, 2));
+        }
 
-      expect(settleResponse.success).toBe(true);
-      expect(settleResponse.network).toBe(ALGORAND_TESTNET_CAIP2);
-      expect(settleResponse.transaction).toBeDefined();
-      expect(settleResponse.payer).toBe(clientAddress);
-    });
+        expect(settleResponse.success).toBe(true);
+        expect(settleResponse.network).toBe(ALGORAND_TESTNET_CAIP2);
+        expect(settleResponse.transaction).toBeDefined();
+        expect(settleResponse.payer).toBe(clientAddress);
+      },
+    );
   });
 
   describe("x402HTTPClient / x402HTTPResourceServer / x402Facilitator - AVM Flow", () => {
@@ -233,6 +237,10 @@ describe("AVM Integration Tests", () => {
     };
 
     beforeEach(async () => {
+      // Brief pause to avoid rate limiting on free public algod nodes
+      // (the previous test suite makes multiple algod calls)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
       const avmFacilitator = new ExactAvmFacilitator(facilitatorSigner);
       const facilitator = new x402Facilitator().register(ALGORAND_TESTNET_CAIP2, avmFacilitator);
 
@@ -250,83 +258,87 @@ describe("AVM Integration Tests", () => {
       httpServer = new x402HTTPResourceServer(ResourceServer, routes);
     });
 
-    it("middleware should successfully verify and settle an AVM payment from an http client", { timeout: 30000 }, async () => {
-      // Middleware creates a PaymentRequired response
-      const context = {
-        adapter: mockAdapter,
-        path: "/api/protected",
-        method: "GET",
-      };
+    it(
+      "middleware should successfully verify and settle an AVM payment from an http client",
+      { timeout: 30000 },
+      async () => {
+        // Middleware creates a PaymentRequired response
+        const context = {
+          adapter: mockAdapter,
+          path: "/api/protected",
+          method: "GET",
+        };
 
-      // No payment made, get PaymentRequired response & header
-      const httpProcessResult = (await httpServer.processHTTPRequest(context))!;
+        // No payment made, get PaymentRequired response & header
+        const httpProcessResult = (await httpServer.processHTTPRequest(context))!;
 
-      expect(httpProcessResult.type).toBe("payment-error");
+        expect(httpProcessResult.type).toBe("payment-error");
 
-      const initial402Response = (
-        httpProcessResult as { type: "payment-error"; response: HTTPResponseInstructions }
-      ).response;
+        const initial402Response = (
+          httpProcessResult as { type: "payment-error"; response: HTTPResponseInstructions }
+        ).response;
 
-      expect(initial402Response).toBeDefined();
-      expect(initial402Response.status).toBe(402);
-      expect(initial402Response.headers).toBeDefined();
-      expect(initial402Response.headers["PAYMENT-REQUIRED"]).toBeDefined();
+        expect(initial402Response).toBeDefined();
+        expect(initial402Response.status).toBe(402);
+        expect(initial402Response.headers).toBeDefined();
+        expect(initial402Response.headers["PAYMENT-REQUIRED"]).toBeDefined();
 
-      // Client responds to PaymentRequired and submits a request with a PaymentPayload
-      const paymentRequired = client.getPaymentRequiredResponse(
-        name => initial402Response.headers[name],
-        initial402Response.body,
-      );
-      const paymentPayload = await client.createPaymentPayload(paymentRequired);
+        // Client responds to PaymentRequired and submits a request with a PaymentPayload
+        const paymentRequired = client.getPaymentRequiredResponse(
+          name => initial402Response.headers[name],
+          initial402Response.body,
+        );
+        const paymentPayload = await client.createPaymentPayload(paymentRequired);
 
-      expect(paymentPayload).toBeDefined();
-      expect(paymentPayload.accepted.scheme).toBe("exact");
+        expect(paymentPayload).toBeDefined();
+        expect(paymentPayload.accepted.scheme).toBe("exact");
 
-      const requestHeaders = await client.encodePaymentSignatureHeader(paymentPayload);
+        const requestHeaders = await client.encodePaymentSignatureHeader(paymentPayload);
 
-      // Middleware handles PAYMENT-SIGNATURE request
-      mockAdapter.getHeader = (name: string) => {
-        if (name === "PAYMENT-SIGNATURE") {
-          return requestHeaders["PAYMENT-SIGNATURE"];
+        // Middleware handles PAYMENT-SIGNATURE request
+        mockAdapter.getHeader = (name: string) => {
+          if (name === "PAYMENT-SIGNATURE") {
+            return requestHeaders["PAYMENT-SIGNATURE"];
+          }
+          return undefined;
+        };
+
+        const httpProcessResult2 = await httpServer.processHTTPRequest(context);
+
+        // No need to respond, can continue with request
+        expect(httpProcessResult2.type).toBe("payment-verified");
+        const {
+          paymentPayload: verifiedPaymentPayload,
+          paymentRequirements: verifiedPaymentRequirements,
+        } = httpProcessResult2 as {
+          type: "payment-verified";
+          paymentPayload: PaymentPayload;
+          paymentRequirements: PaymentRequirements;
+        };
+
+        expect(verifiedPaymentPayload).toBeDefined();
+        expect(verifiedPaymentRequirements).toBeDefined();
+
+        const settlementResult = await httpServer.processSettlement(
+          verifiedPaymentPayload,
+          verifiedPaymentRequirements,
+          200,
+        );
+
+        expect(settlementResult).toBeDefined();
+
+        if (!settlementResult.success) {
+          console.log("❌ HTTP Settlement failed!", JSON.stringify(settlementResult, null, 2));
         }
-        return undefined;
-      };
 
-      const httpProcessResult2 = await httpServer.processHTTPRequest(context);
+        expect(settlementResult.success).toBe(true);
 
-      // No need to respond, can continue with request
-      expect(httpProcessResult2.type).toBe("payment-verified");
-      const {
-        paymentPayload: verifiedPaymentPayload,
-        paymentRequirements: verifiedPaymentRequirements,
-      } = httpProcessResult2 as {
-        type: "payment-verified";
-        paymentPayload: PaymentPayload;
-        paymentRequirements: PaymentRequirements;
-      };
-
-      expect(verifiedPaymentPayload).toBeDefined();
-      expect(verifiedPaymentRequirements).toBeDefined();
-
-      const settlementResult = await httpServer.processSettlement(
-        verifiedPaymentPayload,
-        verifiedPaymentRequirements,
-        200,
-      );
-
-      expect(settlementResult).toBeDefined();
-
-      if (!settlementResult.success) {
-        console.log("❌ HTTP Settlement failed!", JSON.stringify(settlementResult, null, 2));
-      }
-
-      expect(settlementResult.success).toBe(true);
-
-      if (settlementResult.success) {
-        expect(settlementResult.headers).toBeDefined();
-        expect(settlementResult.headers["PAYMENT-RESPONSE"]).toBeDefined();
-      }
-    });
+        if (settlementResult.success) {
+          expect(settlementResult.headers).toBeDefined();
+          expect(settlementResult.headers["PAYMENT-RESPONSE"]).toBeDefined();
+        }
+      },
+    );
   });
 
   describe("Price Parsing Integration", () => {

@@ -633,5 +633,4 @@ export class ExactAvmScheme implements SchemeNetworkFacilitator {
 
     return { isValid: true };
   }
-
 }

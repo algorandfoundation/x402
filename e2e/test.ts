@@ -381,25 +381,24 @@ async function runTest() {
   log('===============================');
 
   // Load configuration from environment
-  const serverAvmAddress = process.env.SERVER_AVM_ADDRESS;
   const serverEvmAddress = process.env.SERVER_EVM_ADDRESS;
   const serverSvmAddress = process.env.SERVER_SVM_ADDRESS;
+  const serverAvmAddress = process.env.SERVER_AVM_ADDRESS;
   const serverAptosAddress = process.env.SERVER_APTOS_ADDRESS;
   const serverStellarAddress = process.env.SERVER_STELLAR_ADDRESS;
-  const clientAvmPrivateKey = process.env.CLIENT_AVM_PRIVATE_KEY;
   const clientEvmPrivateKey = process.env.CLIENT_EVM_PRIVATE_KEY;
   const clientSvmPrivateKey = process.env.CLIENT_SVM_PRIVATE_KEY;
+  const clientAvmPrivateKey = process.env.CLIENT_AVM_PRIVATE_KEY;
   const clientAptosPrivateKey = process.env.CLIENT_APTOS_PRIVATE_KEY;
   const clientStellarPrivateKey = process.env.CLIENT_STELLAR_PRIVATE_KEY;
-  const facilitatorAvmPrivateKey = process.env.FACILITATOR_AVM_PRIVATE_KEY;
   const facilitatorEvmPrivateKey = process.env.FACILITATOR_EVM_PRIVATE_KEY;
   const facilitatorSvmPrivateKey = process.env.FACILITATOR_SVM_PRIVATE_KEY;
+  const facilitatorAvmPrivateKey = process.env.FACILITATOR_AVM_PRIVATE_KEY;
   const facilitatorAptosPrivateKey = process.env.FACILITATOR_APTOS_PRIVATE_KEY;
   const facilitatorStellarPrivateKey = process.env.FACILITATOR_STELLAR_PRIVATE_KEY;
   if (!serverEvmAddress || !serverSvmAddress || !clientEvmPrivateKey || !clientSvmPrivateKey || !facilitatorEvmPrivateKey || !facilitatorSvmPrivateKey) {
     errorLog('❌ Missing required environment variables:');
-    errorLog(' SERVER_EVM_ADDRESS, SERVER_SVM_ADDRESS, CLIENT_EVM_PRIVATE_KEY, CLIENT_SVM_PRIVATE_KEY, FACILITATOR_EVM_PRIVATE_KEY, and FACILITATOR_SVM_PRIVATE_KEY must be set.');
-    errorLog(' For AVM support, also set: SERVER_AVM_ADDRESS, CLIENT_AVM_PRIVATE_KEY, FACILITATOR_AVM_PRIVATE_KEY');
+    errorLog(' SERVER_EVM_ADDRESS, SERVER_SVM_ADDRESS, CLIENT_EVM_PRIVATE_KEY, CLIENT_SVM_PRIVATE_KEY, FACILITATOR_EVM_PRIVATE_KEY, and FACILITATOR_SVM_PRIVATE_KEY must be set');
     process.exit(1);
   }
 
@@ -470,7 +469,6 @@ async function runTest() {
   const networks = getNetworkSet(networkMode);
 
   log(`\n🌐 Network Mode: ${networkMode.toUpperCase()}`);
-  log(`   AVM: ${networks.avm.name} (${networks.avm.caip2})`);
   log(`   EVM: ${networks.evm.name} (${networks.evm.caip2})`);
   log(`   SVM: ${networks.svm.name} (${networks.svm.caip2})`);
   log(`   APTOS: ${networks.aptos.name} (${networks.aptos.caip2})`);
@@ -562,9 +560,6 @@ async function runTest() {
   // Environment variables managed by the test framework (don't require user to set)
   const systemManagedVars = new Set([
     'PORT',
-    'AVM_PRIVATE_KEY',
-    'AVM_NETWORK',
-    'AVM_RPC_URL',
     'EVM_PRIVATE_KEY',
     'SVM_PRIVATE_KEY',
     'APTOS_PRIVATE_KEY',
@@ -774,9 +769,9 @@ async function runTest() {
     const testName = `${scenario.client.name} → ${scenario.server.name} → ${scenario.endpoint.path}${facilitatorLabel}`;
 
     const clientConfig: ClientConfig = {
-      avmPrivateKey: clientAvmPrivateKey || '',
       evmPrivateKey: clientEvmPrivateKey!,
       svmPrivateKey: clientSvmPrivateKey!,
+      avmPrivateKey: clientAvmPrivateKey || '',
       aptosPrivateKey: clientAptosPrivateKey || '',
       stellarPrivateKey: clientStellarPrivateKey || '',
       serverUrl: `http://localhost:${port}`,
@@ -865,9 +860,9 @@ async function runTest() {
 
     const serverConfig: ServerConfig = {
       port,
-      avmPayTo: facilitatorSupportsAvm ? (serverAvmAddress || '') : '',
       evmPayTo: serverEvmAddress!,
       svmPayTo: serverSvmAddress!,
+      avmPayTo: facilitatorSupportsAvm ? (serverAvmAddress || '') : '',
       aptosPayTo: facilitatorSupportsAptos ? (serverAptosAddress || '') : '',
       stellarPayTo: facilitatorSupportsStellar ? (serverStellarAddress || '') : '',
       networks,
@@ -924,6 +919,8 @@ async function runTest() {
           }
         }
 
+        const isAvm = scenario.protocolFamily === 'avm';
+
         if (isEvm && facilitatorName && evmLock) {
           const releaseLock = await evmLock.acquire(facilitatorName);
           try {
@@ -933,6 +930,10 @@ async function runTest() {
             releaseLock();
           }
         } else {
+          if (isAvm) {
+            // Pause between AVM tests to avoid 403 rate limiting on free public Algorand nodes
+            await new Promise(resolve => setTimeout(resolve, 8000));
+          }
           results.push(await runSingleTest(scenario, port, tn, cLog));
         }
       }

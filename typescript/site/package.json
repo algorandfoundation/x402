@@ -30,7 +30,7 @@
     "@x402/paywall": "workspace:*",
     "@x402/stellar": "workspace:*",
     "@x402/svm": "workspace:*",
-    "@algorandfoundation/algokit-utils": "10.0.0-alpha.39",
+    "@algorandfoundation/algokit-utils": "10.0.0-alpha.46",
     "lottie-react": "^2.4.1",
     "motion": "^11.18.0",
     "next": "^16.0.10",
