@@ -30,10 +30,12 @@ import type { ExactAvmPayloadV2 } from "../../src/types";
 // Load private keys from environment (Base64-encoded 64-byte keys)
 const CLIENT_PRIVATE_KEY = process.env.CLIENT_PRIVATE_KEY;
 const FACILITATOR_PRIVATE_KEY = process.env.FACILITATOR_PRIVATE_KEY;
+// Server address (payTo) — must be opt-in to USDC.
+const SERVER_ADDRESS = process.env.SERVER_ADDRESS;
 
-if (!CLIENT_PRIVATE_KEY || !FACILITATOR_PRIVATE_KEY) {
+if (!CLIENT_PRIVATE_KEY || !FACILITATOR_PRIVATE_KEY || !SERVER_ADDRESS) {
   throw new Error(
-    "CLIENT_PRIVATE_KEY and FACILITATOR_PRIVATE_KEY environment variables must be set for integration tests",
+    "CLIENT_PRIVATE_KEY, FACILITATOR_PRIVATE_KEY, and SERVER_ADDRESS environment variables must be set for integration tests",
   );
 }
 
@@ -56,7 +58,7 @@ class AvmFacilitatorClient implements FacilitatorClient {
    *
    * @param facilitator - The x402 facilitator to wrap
    */
-  constructor(private readonly facilitator: x402Facilitator) {}
+  constructor(private readonly facilitator: x402Facilitator) { }
 
   /**
    * Verifies a payment payload
@@ -150,7 +152,7 @@ describe("AVM Integration Tests", () => {
         // Server - builds PaymentRequired response
         const accepts = [
           buildAvmPaymentRequirements(
-            FACILITATOR_ADDRESS,
+            SERVER_ADDRESS,
             "1000", // 0.001 USDC
           ),
         ];
@@ -216,7 +218,7 @@ describe("AVM Integration Tests", () => {
       "/api/protected": {
         accepts: {
           scheme: "exact",
-          payTo: FACILITATOR_ADDRESS,
+          payTo: SERVER_ADDRESS,
           price: "$0.001",
           network: ALGORAND_TESTNET_CAIP2 as Network,
         },
@@ -370,7 +372,7 @@ describe("AVM Integration Tests", () => {
       for (const testCase of testCases) {
         const requirements = await server.buildPaymentRequirements({
           scheme: "exact",
-          payTo: FACILITATOR_ADDRESS,
+          payTo: SERVER_ADDRESS,
           price: testCase.input,
           network: ALGORAND_TESTNET_CAIP2 as Network,
         });
@@ -390,7 +392,7 @@ describe("AVM Integration Tests", () => {
 
       const requirements = await server.buildPaymentRequirements({
         scheme: "exact",
-        payTo: FACILITATOR_ADDRESS,
+        payTo: SERVER_ADDRESS,
         price: customAsset,
         network: ALGORAND_TESTNET_CAIP2 as Network,
       });
@@ -417,7 +419,7 @@ describe("AVM Integration Tests", () => {
       // Test large amount - should use custom parser
       const largeRequirements = await server.buildPaymentRequirements({
         scheme: "exact",
-        payTo: FACILITATOR_ADDRESS,
+        payTo: SERVER_ADDRESS,
         price: 150, // Large amount
         network: ALGORAND_TESTNET_CAIP2 as Network,
       });
@@ -430,7 +432,7 @@ describe("AVM Integration Tests", () => {
       // Test small amount - should use default USDC
       const smallRequirements = await server.buildPaymentRequirements({
         scheme: "exact",
-        payTo: FACILITATOR_ADDRESS,
+        payTo: SERVER_ADDRESS,
         price: 50, // Small amount
         network: ALGORAND_TESTNET_CAIP2 as Network,
       });
@@ -466,7 +468,7 @@ describe("AVM Integration Tests", () => {
       // VIP tier
       const vipReq = await server.buildPaymentRequirements({
         scheme: "exact",
-        payTo: FACILITATOR_ADDRESS,
+        payTo: SERVER_ADDRESS,
         price: 2000,
         network: ALGORAND_TESTNET_CAIP2 as Network,
       });
@@ -476,7 +478,7 @@ describe("AVM Integration Tests", () => {
       // Premium tier
       const premiumReq = await server.buildPaymentRequirements({
         scheme: "exact",
-        payTo: FACILITATOR_ADDRESS,
+        payTo: SERVER_ADDRESS,
         price: 500,
         network: ALGORAND_TESTNET_CAIP2 as Network,
       });
@@ -486,7 +488,7 @@ describe("AVM Integration Tests", () => {
       // Standard tier (default)
       const standardReq = await server.buildPaymentRequirements({
         scheme: "exact",
-        payTo: FACILITATOR_ADDRESS,
+        payTo: SERVER_ADDRESS,
         price: 50,
         network: ALGORAND_TESTNET_CAIP2 as Network,
       });
@@ -513,7 +515,7 @@ describe("AVM Integration Tests", () => {
 
       const requirements = await server.buildPaymentRequirements({
         scheme: "exact",
-        payTo: FACILITATOR_ADDRESS,
+        payTo: SERVER_ADDRESS,
         price: 100,
         network: ALGORAND_TESTNET_CAIP2 as Network,
       });
@@ -537,7 +539,7 @@ describe("AVM Integration Tests", () => {
       for (const testCase of testCases) {
         const requirements = await server.buildPaymentRequirements({
           scheme: "exact",
-          payTo: FACILITATOR_ADDRESS,
+          payTo: SERVER_ADDRESS,
           price: testCase.input,
           network: ALGORAND_TESTNET_CAIP2 as Network,
         });

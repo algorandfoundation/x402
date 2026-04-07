@@ -39,10 +39,7 @@ async function createFacilitator(): Promise<x402Facilitator> {
     throw new Error("❌ FACILITATOR_SVM_PRIVATE_KEY environment variable is required");
   }
 
-  const avmPrivateKey = process.env.FACILITATOR_AVM_PRIVATE_KEY || process.env.PRIVATE_KEY;
-  if (!avmPrivateKey) {
-    throw new Error("❌ FACILITATOR_AVM_PRIVATE_KEY environment variable is required");
-  }
+  const avmPrivateKey = process.env.FACILITATOR_AVM_PRIVATE_KEY;
 
   // Initialize the EVM account from private key
   const evmAccount = privateKeyToAccount(process.env.FACILITATOR_EVM_PRIVATE_KEY as `0x${string}`);
@@ -104,19 +101,21 @@ async function createFacilitator(): Promise<x402Facilitator> {
   // Initialize SVM signer - handles all Solana networks with automatic RPC creation
   const svmSigner = toFacilitatorSvmSigner(svmAccount);
 
-  // Initialize the AVM signer from private key
-  const avmSigner = toFacilitatorAvmSigner(avmPrivateKey);
-
   // Create and configure the facilitator with all networks
   const facilitator = new x402Facilitator()
     .register("eip155:84532", new ExactEvmScheme(evmSigner))
     .registerV1("base-sepolia" as Network, new ExactEvmSchemeV1(evmSigner))
     .register("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1", new ExactSvmScheme(svmSigner))
-    .registerV1("solana-devnet" as Network, new ExactSvmSchemeV1(svmSigner))
-    .register(
+    .registerV1("solana-devnet" as Network, new ExactSvmSchemeV1(svmSigner));
+
+  // Optionally register Algorand if configured
+  if (avmPrivateKey) {
+    const avmSigner = toFacilitatorAvmSigner(avmPrivateKey);
+    facilitator.register(
       "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
       new ExactAvmScheme(avmSigner),
     );
+  }
 
   // Optionally register Aptos if configured
   if (process.env.FACILITATOR_APTOS_PRIVATE_KEY) {
