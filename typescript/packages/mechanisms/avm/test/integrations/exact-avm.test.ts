@@ -58,7 +58,7 @@ class AvmFacilitatorClient implements FacilitatorClient {
    *
    * @param facilitator - The x402 facilitator to wrap
    */
-  constructor(private readonly facilitator: x402Facilitator) { }
+  constructor(private readonly facilitator: x402Facilitator) {}
 
   /**
    * Verifies a payment payload
