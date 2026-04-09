@@ -11,8 +11,7 @@ import { avmPaywall } from "@x402/paywall/avm";
 
 const evmPayeeAddress = process.env.RESOURCE_EVM_ADDRESS as `0x${string}`;
 const svmPayeeAddress = process.env.RESOURCE_SVM_ADDRESS as string;
-const avmPayeeAddress =
-  process.env.RESOURCE_AVM_ADDRESS || (process.env.RESOURCE_WALLET_ADDRESS as string);
+const avmPayeeAddress = process.env.RESOURCE_AVM_ADDRESS;
 const facilitatorUrl = process.env.FACILITATOR_URL as string;
 
 const EVM_NETWORK = "eip155:84532" as const; // Base Sepolia
@@ -41,10 +40,11 @@ if (!facilitatorUrl) {
 const facilitatorClient = new HTTPFacilitatorClient({ url: facilitatorUrl });
 
 // Build the paywall provider
-const paywall = createPaywall()
-  .withNetwork(evmPaywall)
-  .withNetwork(svmPaywall)
-  .withNetwork(avmPaywall)
+const paywallBuilder = createPaywall().withNetwork(evmPaywall).withNetwork(svmPaywall);
+if (avmPayeeAddress) {
+  paywallBuilder.withNetwork(avmPaywall);
+}
+const paywall = paywallBuilder
   .withConfig({
     appName: "x402 Demo",
     appLogo: "/logos/x402-examples.png",
@@ -67,12 +67,16 @@ const x402PaymentProxy = paymentProxyFromConfig(
           price: "$0.01",
           network: SVM_NETWORK,
         },
-        {
-          payTo: avmPayeeAddress,
-          scheme: "exact",
-          price: "$0.01",
-          network: AVM_NETWORK,
-        },
+        ...(avmPayeeAddress
+          ? [
+              {
+                payTo: avmPayeeAddress,
+                scheme: "exact" as const,
+                price: "$0.01",
+                network: AVM_NETWORK,
+              },
+            ]
+          : []),
       ],
       description: "Access to protected content",
     },
@@ -81,7 +85,7 @@ const x402PaymentProxy = paymentProxyFromConfig(
   [
     { network: EVM_NETWORK, server: new ExactEvmScheme() },
     { network: SVM_NETWORK, server: new ExactSvmScheme() },
-    { network: AVM_NETWORK, server: new ExactAvmScheme() },
+    ...(avmPayeeAddress ? [{ network: AVM_NETWORK, server: new ExactAvmScheme() }] : []),
   ],
   undefined, // paywallConfig
   paywall, // paywall provider
