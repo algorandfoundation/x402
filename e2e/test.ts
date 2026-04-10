@@ -930,11 +930,11 @@ async function runTest() {
             releaseLock();
           }
         } else {
+          results.push(await runSingleTest(scenario, port, tn, cLog));
           if (isAvm) {
             // Pause between AVM tests to avoid 403 rate limiting on free public Algorand nodes
             await new Promise(resolve => setTimeout(resolve, 8000));
           }
-          results.push(await runSingleTest(scenario, port, tn, cLog));
         }
       }
     } finally {
